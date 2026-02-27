@@ -1,0 +1,52 @@
+{
+  "FUZZY_SCENARIO": "expected",
+  "RUN_MODE": "random",
+  "FIXED_STAFF": {
+    "Doctor": 3,
+    "Nurse": 3,
+    "Assistant": 6,
+    "Specialist": 1
+  },
+  "N_STAFF_SAMPLES": 5,
+  "STAFF_BOUNDS": {
+    "Doctor": [
+      1,
+      6
+    ],
+    "Nurse": [
+      1,
+      8
+    ],
+    "Assistant": [
+      1,
+      10
+    ],
+    "Specialist": [
+      0,
+      2
+    ]
+  },
+  "RANDOM_STAFF_SEED": 202600,
+  "NUM_PATIENTS": 36,
+  "DATA_SEED": 1951,
+  "T_MAX_DAY": 1440.0,
+  "N_SAMPLES_PER_LEVEL": 25,
+  "POP_SIZE": 200,
+  "GENERATIONS": 100,
+  "MUT_RATE": 0.2,
+  "GA_SEED_BASE": 202600,
+  "GOAL_COST": 650.0,
+  "MAX_COST": 22750.0,
+  "GOAL_WAIT": 50.0,
+  "MAX_WAIT": 200000.0,
+  "TRIAGE_WAIT_LIMIT": {
+    "1": 0.0,
+    "2": 30.0,
+    "3": 240.0,
+    "4": 720.0,
+    "5": Infinity
+  },
+  "TRIAGE_PENALTY": 1000.0,
+  "INFEAS_BASE_PENALTY": 1000000.0,
+  "EXP_CENTER": "median"
+}
