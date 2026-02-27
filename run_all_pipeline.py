@@ -116,7 +116,7 @@ def main():
     parser.add_argument("--fixed-nurse", type=int, default=3)
     parser.add_argument("--fixed-assistant", type=int, default=6)
     parser.add_argument("--fixed-specialist", type=int, default=1)
-    parser.add_argument("--n-staff-samples", type=int, default=25) # scenarios
+    parser.add_argument("--n-staff-samples", type=int, default=100) # scenarios
     parser.add_argument("--bound-doctor-lo", type=int, default=1)
     parser.add_argument("--bound-doctor-hi", type=int, default=6)
     parser.add_argument("--bound-nurse-lo", type=int, default=1)
@@ -126,7 +126,7 @@ def main():
     parser.add_argument("--bound-specialist-lo", type=int, default=0)
     parser.add_argument("--bound-specialist-hi", type=int, default=2)
     parser.add_argument("--random-staff-seed", type=int, default=202600)
-    parser.add_argument("--num-patients", type=int, default=7)   #Number of patients
+    parser.add_argument("--num-patients", type=int, default=36)   #Number of patients
     parser.add_argument("--data-seed", type=int, default=1952)
     parser.add_argument("--t-max-day", type=float, default=1440.0)
     parser.add_argument("--n-samples-per-level", type=int, default=25)
