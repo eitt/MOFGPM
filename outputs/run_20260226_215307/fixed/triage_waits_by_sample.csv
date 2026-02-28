@@ -1,8 +1,0 @@
-scenario,sample_id,patient,triage,first_wait,early_wait_j_le_4,schedule_complete,feasible
-expected,1,P1,3,0.0,0.0,True,True
-expected,1,P2,3,0.0,0.0,True,True
-expected,1,P3,2,0.0,0.0,True,True
-expected,1,P4,3,0.0,0.0,True,True
-expected,1,P5,3,0.0,83.96993531640965,True,True
-expected,1,P6,3,0.0,0.0,True,True
-expected,1,P7,3,0.0,0.0,True,True

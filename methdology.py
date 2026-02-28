@@ -362,67 +362,130 @@ add_table_caption(
 )
 
 # ============================================================
-# 4. SCHEDULING-BASED EVALUATION (DEMAND vs CAPACITY)
+# 4. SCHEDULING-BASED EVALUATION (UPDATED — aligns with LaTeX correction)
+# REPLACE your entire current Section 4 block with this one.
 # ============================================================
 doc.add_heading("4. Scheduling-based evaluation (capacity meets demand)", level=1)
 
 add_par(
     "Given arrivals (demand) and staffing (capacity), the pipeline constructs a feasible schedule for all required patient activities. "
-    "Let ST_{ij} and ET_{ij} denote the start and end times of activity j for patient i, respectively, TA_i the arrival time, and d_{ij} "
-    "the defuzzified duration (typically d_{ij} = EI(\\tilde{T}_{ij}) from Equation (3)). Precedence and timing are:"
+    "In this study, precedence relations are not generated as an explicit MILP constraint set; instead, they are induced by each patient’s "
+    "triage-dependent clinical route and enforced implicitly by the schedule-generation (decoding) algorithm."
 )
 
+# ---- 4.1
+doc.add_heading("4.1 Generation of precedence constraints from triage-dependent routes", level=2)
+
+add_par(
+    "Let c(i) be the triage class of patient i and let R_{c(i),j} ∈ {0,1} indicate whether activity j is required for class c(i). "
+    "The set of required activities for patient i is defined as:"
+)
+add_equation_block(
+    [r"\mathcal{J}_i = \{\, j \in \mathcal{J}\ |\ R_{c(i),j}=1 \,\}"],
+    eq_label="Equation (4). Required-activity set"
+)
+
+add_par(
+    "To define a reproducible route order, we sort J_i by the global activity index, yielding an ordered sequence "
+    "(j_{i,1}, j_{i,2}, …, j_{i,K_i}). This sequence defines a chain precedence graph:"
+)
+add_equation_block(
+    [r"(i,j_{i,k-1}) \rightarrow (i,j_{i,k}), \quad k=2,\ldots,K_i"],
+    eq_label="Equation (5). Chain precedence induced by the route"
+)
+
+add_par(
+    "In the case study, the activity index order is assumed to match the intended clinical ordering; if needed, the ordered sequence "
+    "can alternatively be defined using a clinically validated ordering table without changing the decoding logic."
+)
+
+# ---- 4.2
+doc.add_heading("4.2 Implicit enforcement of precedence via Serial Schedule Generation (SSGS)", level=2)
+
+add_par(
+    "Let ST_{i,k} and ET_{i,k} denote the start and end times of the k-th activity in patient i’s ordered route, where the k-th activity "
+    "corresponds to j_{i,k}. Let d_{i,k} be the defuzzified duration (typically d_{i,k} = EI(\\tilde{T}_{i,k}) from Equation (3)). "
+    "During decoding, a task becomes ready only if its predecessor has been scheduled. Define the precedence-based release time:"
+)
 add_equation_block(
     [
-        r"ST_{i1} \ge TA_{i}",
-        r"ST_{ij} \ge ET_{i,j-1},\quad \forall j>1",
-        r"ET_{ij} = ST_{ij} + d_{ij}",
+        r"r_{i,k} = \begin{cases} TA_i, & k=1, \\ ET_{i,k-1}, & k \ge 2. \end{cases}"
     ],
-    eq_label="Equations (4–6). Timing and precedence"
+    eq_label="Equation (6). Precedence-based release time"
+)
+
+add_par("The decoding algorithm enforces precedence by restricting start times to satisfy:")
+add_equation_block(
+    [r"ST_{i,k} \ge r_{i,k}, \quad \forall i,\ k=1,\ldots,K_i"],
+    eq_label="Equation (7). Precedence constraint as enforced by decoding"
+)
+
+add_par("Completion times are then defined by:")
+add_equation_block(
+    [r"ET_{i,k} = ST_{i,k} + d_{i,k}"],
+    eq_label="Equation (8). Completion time"
 )
 
 add_par(
-    "Equations (4–6) enforce temporal feasibility. Equation (4) prevents service before arrival. Equation (5) enforces within-patient precedence "
-    "(the clinical route must be followed). Equation (6) links start times to completion times using uncertainty-adjusted durations. "
-    "Operationally, these constraints define how demand propagates through the ED over time."
+    "Equations (6–8) ensure clinical and temporal feasibility. Equation (6) prevents service before arrival for the first activity and enforces "
+    "within-patient precedence for subsequent activities; Equation (7) is the precedence constraint implemented by the decoder; and Equation (8) links "
+    "start times to completion times using uncertainty-adjusted durations."
+)
+
+# ---- 4.3
+doc.add_heading("4.3 Resource feasibility and the demand–capacity balance", level=2)
+
+add_par(
+    "Resource feasibility (capacity) is enforced through a serial schedule generation scheme. Let R_{i,k} be the set of resource types required by "
+    "task (i,k) (derived from TH_{h,j_{i,k}}), and let avail_r denote the earliest availability time among the S_r parallel units of resource type r. "
+    "For each ready task, the decoder assigns the earliest available unit of each required resource type and sets:"
+)
+add_equation_block(
+    [r"ST_{i,k} = \max\left(r_{i,k},\ \max_{r\in \mathcal{R}_{i,k}} \text{avail}_{r}\right)"],
+    eq_label="Equation (9). Resource-feasible start time (SSGS)"
 )
 
 add_par(
-    "Resource feasibility (capacity) is enforced through a serial schedule generation scheme: when an activity requires one or more resource types, "
-    "it is assigned to the earliest available units of each required resource type, and its start time is set to the latest of (i) the precedence-implied "
-    "release time and (ii) the selected resource availability times. This operationally encodes the balance between demand and capacity: if arrivals overlap "
-    "and staffing is limited, resource availability delays start times and increases waiting."
+    "Equation (9) operationalizes the balance between demand and capacity: when arrivals overlap or staffing is low, resource availability increases "
+    "avail_r, which delays ST_{i,k} and propagates into higher waiting times. Conversely, increasing staffing increases the number of parallel units S_r, "
+    "reduces contention, and improves feasibility and waiting-time performance."
 )
 
-add_par("Waiting time is computed as:")
+# ---- 4.4
+doc.add_heading("4.4 Waiting-time metric and triage feasibility", level=2)
+
+add_par(
+    "Waiting time is computed as the time a patient spends waiting between arrival or completion of a prior activity and the start of the next activity:"
+)
 add_equation_block(
     [
-        r"WT_{i1} = ST_{i1} - TA_{i}",
-        r"WT_{ij} = ST_{ij} - ET_{i,j-1},\quad \forall j>1",
-        r"\mathrm{Wait}(S) = \sum_{i}\sum_{j} WT_{ij}",
+        r"WT_{i,1} = ST_{i,1} - TA_i",
+        r"WT_{i,k} = ST_{i,k} - ET_{i,k-1}, \quad k=2,\ldots,K_i",
+        r"\mathrm{Wait}(S) = \sum_i \sum_{k=1}^{K_i} WT_{i,k}",
     ],
-    eq_label="Equations (7–9). Waiting-time metric"
+    eq_label="Equation (10). Waiting-time metric"
 )
 
 add_par(
-    "Equations (7–9) define the service-quality metric used in MOFGPM. The aggregate Wait(S) is the total accumulated waiting time across all patients and "
-    "activities under staffing plan S. This quantity typically decreases when staffing capacity increases and increases when demand intensity or service durations "
-    "increase."
+    "Equation (10) defines the service-quality metric used in MOFGPM. The aggregate Wait(S) is the total accumulated waiting time across all patients "
+    "and activities under staffing plan S. This quantity increases when demand intensity (arrivals) or service durations exceed capacity, and it decreases "
+    "when additional staffing increases capacity."
 )
 
-# Triage feasibility rule (added; present in enhanced LaTeX)
 add_par(
-    "In addition to aggregate waiting, feasibility is evaluated against triage-specific service standards. Let WT_i^{early} denote the cumulative waiting time "
-    "over early-care activities (e.g., up to a fixed index j ≤ J0 in the implementation), and let MT_c be the maximum tolerated threshold for triage category c. "
-    "Feasibility requires:"
+    "In addition to aggregate waiting, triage categories impose service-level requirements. Let WT_i^{early} denote cumulative waiting time over early-care "
+    "activities (e.g., up to a fixed index corresponding to j ≤ J0 with J0=4 in the implementation), and let MT_c denote the triage-specific maximum tolerated "
+    "threshold. Feasibility requires:"
 )
 add_equation_block(
-    [r"WT^{early}_{i} \le MT_{c(i)},\quad \forall i"],
-    eq_label="Equation (10). Triage feasibility (early-care service standard)"
+    [r"WT^{\mathrm{early}}_i \le MT_{c(i)}, \quad \forall i"],
+    eq_label="Equation (11). Triage feasibility (early-care service standard)"
 )
+
 add_par(
-    "Equation (10) ensures that high-acuity patients are not delayed beyond clinically acceptable thresholds, even if aggregate waiting is acceptable. "
-    "In computation, schedules violating this constraint are penalized to prioritize feasibility before improving satisfaction."
+    "Equation (11) provides a manager- and clinician-relevant feasibility rule: even if aggregate waiting is acceptable on average, excessive early-care delays "
+    "for high-acuity patients are not permitted. In the computational pipeline, violations are heavily penalized so that solutions are first driven toward "
+    "feasibility before improving satisfaction."
 )
 
 # ============================================================

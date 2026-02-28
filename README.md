@@ -29,9 +29,9 @@ pdflatex --version
 ## Files
 
 - `main.py`: optimization and sensitivity workflow (GA + MOFGPM).
-- `methdology.py`: generates a Word methodology document (`.docx`) with formatted equations.
-- `run_all_pipeline.py`: one-command runner for fixed + sensitivity + methodology outputs.
-- `results_report.py`: Word draft generator for Results section from pipeline outputs.
+- `methdology.py`: generates Word/LaTeX methodology outputs.
+- `run_all_pipeline.py`: one-command runner for fixed + sensitivity + methodology + merged analysis outputs.
+- `results_report.py`: Word draft generator for Results section from produced outputs.
 - `requirements.txt`: Python dependency list.
 
 ## Methodology Document Generation
@@ -42,10 +42,10 @@ Run:
 python methdology.py
 ```
 
-Output:
+Outputs:
 
-- `Methodology_MOFGPM_Pipeline.docx` in the project root.
-- `Methodology_MOFGPM_Pipeline.tex` in the project root.
+- `Methodology_MOFGPM_Pipeline.docx` in project root.
+- `Methodology_MOFGPM_Pipeline.tex` in project root.
 - `Methodology_MOFGPM_Pipeline.pdf` if `pdflatex` is installed and available on PATH.
 
 ## Optimization Run
@@ -56,7 +56,7 @@ Run:
 python main.py
 ```
 
-This runs the MOFGPM + GA workflow (baseline or random sensitivity mode based on `main.py` settings) and shows summary tables/plots.
+This runs the MOFGPM + GA workflow (baseline or random sensitivity mode based on environment settings) and produces summary tables/plots.
 
 ## One-Command Full Pipeline
 
@@ -66,117 +66,154 @@ Run everything (fixed + sensitivity + methodology):
 python run_all_pipeline.py --install-deps --modes both
 ```
 
-Default output structure:
+### Output folder organization
+
+```text
+outputs/
+  run_<timestamp>/
+    fixed/
+    sensitivity/
+    methodology/
+  analysis/
+    sensitivity_history/
+```
 
 - `outputs/run_<timestamp>/fixed/`
+  - Fixed staffing (baseline) run outputs.
 - `outputs/run_<timestamp>/sensitivity/`
+  - Random staffing samples for sensitivity analysis.
 - `outputs/run_<timestamp>/methodology/`
+  - Methodology files and results draft report.
+- `outputs/analysis/sensitivity_history/`
+  - Merged cross-run sensitivity tables and plots.
 
-The `fixed` and `sensitivity` folders include:
+### Typical files in `fixed/` and `sensitivity/`
 
-- `results.csv`
 - `settings.json`
+- `results.csv`
+- `triage_waits_by_sample.csv`
+- `schedule_by_sample.csv`
 - `plot_cost_vs_wait.png`
 - `plot_lambda_vs_wait.png`
 - `plot_lambda_vs_cost.png`
-- `plot_cost_wait_scatter_lambda.png` (feasible/infeasible markers, λ visual encoding)
-- `plot_membership_decomposition.png` (\(\mu_{Cost}\), \(\mu_{Wait}\), and \(\lambda\) curves)
-- `plot_feasibility_heatmap_doctor_nurse.png` (best feasible λ over Doctor × Nurse grid)
-- `plot_triage_first_wait_boxplot.png` (distribution by triage)
-- `plot_triage_first_wait_ecdf.png` (ECDF by triage)
-- `triage_waits_by_sample.csv`
+- `plot_cost_wait_scatter_lambda.png`
+- `plot_membership_decomposition.png`
+- `plot_feasibility_heatmap_doctor_nurse.png`
+- `plot_triage_first_wait_boxplot.png`
+- `plot_triage_first_wait_ecdf.png`
 
-The `methodology` folder includes (when available):
+Baseline-only helper (when `T_MAX_DAY <= 1440`):
+
+- `plot_baseline_schedule_tmax1440.png`
+
+### Typical files in `analysis/sensitivity_history/`
+
+- `sensitivity_results_all_runs.csv`
+- `triage_waits_all_runs.csv` (if available)
+- `plot_history_best_lambda_by_scenario_key.png`
+- `plot_history_lambda_boxplot_by_scenario_key.png`
+- `plot_history_lambda_density.png`
+- `plot_history_lambda_vs_resource_levels.png`
+- `plot_history_operational_pareto_overview.png`
+- `plot_history_cost_wait_scatter_all_runs.png`
+- `plot_history_mean_lambda_heatmap_doctor_nurse.png`
+- `plot_history_triage_first_wait_ecdf.png`
+
+### Typical files in `methodology/`
 
 - `Methodology_MOFGPM_Pipeline.docx`
 - `Methodology_MOFGPM_Pipeline.tex`
-- `Methodology_MOFGPM_Pipeline.pdf` (requires `pdflatex`)
-- `Results_Draft_MOFGPM.docx` (auto-generated results section draft with tables and figures)
+- `Methodology_MOFGPM_Pipeline.pdf` (if `pdflatex` is available)
+- `Results_Draft_MOFGPM.docx`
 
-### Example with your settings
+## CSV Dictionary (Column Meaning)
 
-```powershell
-python run_all_pipeline.py --modes both --fuzzy-scenario expected --num-patients 3 --data-seed 42 --t-max-day 1440 --n-samples-per-level 25 --pop-size 200 --generations 120 --mut-rate 0.2 --ga-seed-base 202600 --goal-cost 650 --max-cost 22750 --goal-wait 50 --max-wait 200000 --triage-limit-1 0 --triage-limit-2 30 --triage-limit-3 240 --triage-limit-4 720 --triage-limit-5 inf --triage-penalty 1000 --infeas-base-penalty 1000000 --exp-center median --fixed-doctor 3 --fixed-nurse 3 --fixed-assistant 6 --fixed-specialist 1 --n-staff-samples 25 --bound-doctor-lo 1 --bound-doctor-hi 6 --bound-nurse-lo 1 --bound-nurse-hi 8 --bound-assistant-lo 1 --bound-assistant-hi 10 --bound-specialist-lo 0 --bound-specialist-hi 2
-```
+### `results.csv` (sample-level summary)
 
-## Equation Rendering Guarantee
+- `scenario`: fuzzy scenario solved (`optimistic`, `expected`, `pessimistic`).
+- `sample_id`: staffing sample index in that run.
+- `Doctor`, `Nurse`, `Assistant`, `Specialist`: staffing levels for the sample.
+- `wmax`: wait tolerance used in memberships.
+- `cost`: staffing cost objective.
+- `wait`: total waiting-time objective.
+- `mu_cost`, `mu_wait`: membership values for cost and wait.
+- `lambda`: MOFGPM value (`min(mu_cost, mu_wait)`).
+- `feasible`: feasibility flag.
+- `triage_violation`: triage-related violation amount.
+- `ga_time_s`: solve time for that sample.
 
-`methdology.py` now uses a fail-safe equation pipeline:
+### `triage_waits_by_sample.csv` (patient-level waits)
 
-- Accepts LaTeX-like input lines in code.
-- Converts them to Word-safe math text (Greek symbols, inequalities, sums, fractions).
-- Inserts them as Word equation objects (OMML), preventing raw LaTeX tokens like `\frac` or `\sigma` from appearing in the final document.
+- `scenario`, `sample_id`, `patient`, `triage`
+- `first_wait`: arrival to first provider wait.
+- `early_wait_j_le_4`: cumulative early-task waiting (`j <= 4` tasks).
+- `schedule_complete`: whether required early tasks were scheduled.
+- `feasible`: parent sample feasibility.
 
-## Validation Scope
+### `schedule_by_sample.csv` (task-level schedule)
 
-The methodology includes:
+- `scenario`, `sample_id`, `patient`, `triage`, `activity`, `task_j`
+- `start`, `end`, `duration`
+- `required_resources`: comma-separated required resources.
+- `req_Doctor`, `req_Nurse`, `req_Assistant`, `req_Specialist`: binary resource requirements.
+- `Doctor`, `Nurse`, `Assistant`, `Specialist`: staffing context.
 
-- Baseline case analysis (fixed staffing).
-- Sensitivity analysis (sampled staffing).
-- External validation with FlexSim simulation to compare GA+MOFGPM outputs (waiting time, service attainment, utilization).
+### `sensitivity_results_all_runs.csv` (merged history)
 
-## How To Interpret Outputs (Project Aim Alignment)
+Includes `results.csv` columns plus run metadata, such as:
 
-Project aim: support baseline-anchored ED staffing decisions under uncertainty by identifying:
+- `run_tag`, `run_dir`
+- `configured_num_patients`, `t_max_day`, `n_samples_per_level`
+- `fuzzy_scenario`, `goal_wait`, `max_wait`, `goal_cost`, `max_cost`
+- `scenario_key`: operational signature used for merged grouping
 
-- whether current staffing is feasible,
-- where feasibility boundaries are,
-- and what cost is required for better service performance.
+## Figure Interpretation Guide
 
-### Core tables
-
-- `results.csv`
-  - One row per tested staffing plan.
-  - Key fields:
-    - `feasible`: whether triage constraints and MOFGPM conditions are satisfied.
-    - `cost`, `wait`: raw tradeoff metrics.
-    - `mu_cost`, `mu_wait`, `lambda`: fuzzy-goal satisfaction metrics.
-  - Interpretation:
-    - Start from feasible rows.
-    - Rank by highest `lambda`, then lower `cost` / `wait`.
-    - The smaller of `mu_cost` and `mu_wait` is the binding objective.
-
-- `triage_waits_by_sample.csv`
-  - Patient-level waiting metrics by triage and staffing sample.
-  - Interpretation:
-    - Use to verify service quality distribution (not only aggregate wait).
-    - Compare triage classes for equity and SLA consistency.
-
-### Figures and their decision meaning
-
-- `plot_cost_vs_wait.png`
-  - Basic cost vs waiting tradeoff cloud.
-  - Interpretation: visual first-pass of efficiency vs service delay.
-
-- `plot_lambda_vs_wait.png` and `plot_lambda_vs_cost.png`
-  - Satisfaction index `lambda` against each objective.
-  - Interpretation: identify regions where balanced performance is strong (`lambda` near 1).
+### Per-run figures (`fixed/` and `sensitivity/`)
 
 - `plot_cost_wait_scatter_lambda.png`
-  - Manager-ready tradeoff map.
-  - Feasible/infeasible plans use different markers; `lambda` is encoded visually.
-  - Interpretation: best actionable candidates are feasible points with high `lambda` and acceptable cost.
-
+  - Use first to screen candidates.
+  - Prefer feasible points with high `lambda`, then compare cost/wait.
 - `plot_membership_decomposition.png`
-  - `mu_cost`, `mu_wait`, and `lambda` curves vs sample (or `W_max` if swept).
-  - Interpretation: reveals which objective binds (`lambda = min(mu_cost, mu_wait)`), guiding whether to relax budget or service tolerance.
-
+  - Shows `mu_cost`, `mu_wait`, `lambda` behavior.
+  - The lower membership is binding (`lambda = min(mu_cost, mu_wait)`).
 - `plot_feasibility_heatmap_doctor_nurse.png`
-  - Staffing feasibility map over Doctors × Nurses.
-  - Color shows best feasible `lambda`; missing cells indicate no feasible solution.
-  - Interpretation: operational feasibility boundary for staffing policy.
-
+  - Doctor-Nurse staffing feasibility boundary.
+  - Empty/NA cells imply no feasible solution in sampled data.
 - `plot_triage_first_wait_boxplot.png` and `plot_triage_first_wait_ecdf.png`
-  - Distribution view of time-to-first-provider by triage class.
-  - Interpretation: clinical relevance check; ensures aggregate improvements do not hide poor performance in critical triage groups.
+  - Check triage-level service quality and equity.
+- `plot_baseline_schedule_tmax1440.png`
+  - Easy-to-read baseline schedule timeline for a one-day horizon.
 
-### Results report draft
+### Merged-history figures (`analysis/sensitivity_history/`)
 
-- `methodology/Results_Draft_MOFGPM.docx`
-  - Narrative-ready results section for manuscript/reporting.
-  - Interpretation flow:
-    - baseline status,
-    - scenario feasibility rates,
-    - top feasible tradeoff solutions,
-    - feasibility boundary diagnostics,
-    - figure-supported managerial conclusions.
+- `plot_history_best_lambda_by_scenario_key.png`
+  - Best achieved lambda by operational setting.
+- `plot_history_lambda_boxplot_by_scenario_key.png`
+  - Robustness/dispersion of lambda by operational setting.
+- `plot_history_lambda_density.png`
+  - Feasible vs infeasible lambda distribution.
+- `plot_history_lambda_vs_resource_levels.png`
+  - Resource-level effects on lambda (subplots by resource).
+- `plot_history_operational_pareto_overview.png`
+  - Integrated operational-performance view and Pareto trend.
+- `plot_history_cost_wait_scatter_all_runs.png`
+  - Global cost-wait cloud across all runs.
+- `plot_history_mean_lambda_heatmap_doctor_nurse.png`
+  - Mean lambda landscape over Doctor x Nurse levels.
+- `plot_history_triage_first_wait_ecdf.png`
+  - Merged triage service distributions.
+
+## Recommended Reading Order
+
+1. Start with merged-history figures in `analysis/sensitivity_history/` to identify robust regions.
+2. Use run-level `results.csv` and `plot_cost_wait_scatter_lambda.png` for candidate shortlist.
+3. Verify triage-level quality with `triage_waits_by_sample.csv` and triage plots.
+4. Use `schedule_by_sample.csv` and baseline schedule plot for operational explainability.
+5. Use `methodology/Results_Draft_MOFGPM.docx` for manuscript/report-ready narrative.
+
+## Example Full Command
+
+```powershell
+python run_all_pipeline.py --modes both --fuzzy-scenario expected --num-patients 36 --force-num-patients --data-seed 1951 --t-max-day 1440 --n-samples-per-level 25 --pop-size 200 --generations 100 --mut-rate 0.2 --ga-seed-base 202600 --goal-cost 650 --max-cost 22750 --goal-wait 50 --max-wait 200000 --triage-limit-1 0 --triage-limit-2 30 --triage-limit-3 240 --triage-limit-4 720 --triage-limit-5 inf --triage-penalty 1000 --infeas-base-penalty 1000000 --exp-center median --fixed-doctor 3 --fixed-nurse 3 --fixed-assistant 6 --fixed-specialist 1 --n-staff-samples 25 --bound-doctor-lo 1 --bound-doctor-hi 6 --bound-nurse-lo 1 --bound-nurse-hi 8 --bound-assistant-lo 1 --bound-assistant-hi 10 --bound-specialist-lo 0 --bound-specialist-hi 2
+```

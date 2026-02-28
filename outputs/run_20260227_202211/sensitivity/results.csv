@@ -1,0 +1,2 @@
+scenario,sample_id,Doctor,Nurse,Assistant,Specialist,wmax,cost,wait,mu_cost,mu_wait,lambda,feasible,triage_violation,ga_time_s
+expected,1,1,5,2,1,200000.0,1100.0,83823.41644863438,0.9796380090497737,0.5810281748005283,0.5810281748005283,False,35.40812373347529,361.13694739341736

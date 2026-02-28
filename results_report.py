@@ -176,6 +176,17 @@ def generate_results_report_word(
 
     doc.add_heading("3. Feasibility Under Uncertainty Scenarios", level=1)
     scenarios = sorted(list(df[scenario_col].dropna().unique()))
+    scenario_label = "Operational scenario" if scenario_col == "scenario_key" else "Scenario"
+    is_merged = ("run_tag" in df.columns and df["run_tag"].nunique(dropna=True) > 1) or (
+        scenario_col == "scenario_key"
+    )
+    if is_merged:
+        n_runs = int(df["run_tag"].nunique()) if "run_tag" in df.columns else 1
+        n_keys = int(df[scenario_col].nunique(dropna=True))
+        add_par(
+            f"This section integrates merged outputs across {n_runs} run batches and {n_keys} operational scenario groups."
+        )
+
     rows = []
     for sc in scenarios:
         sub = df[df[scenario_col] == sc]
@@ -187,7 +198,7 @@ def generate_results_report_word(
         if bf is None:
             rows.append(
                 {
-                    "Scenario": sc,
+                    scenario_label: sc,
                     "Runs": n,
                     "Feasible (%)": f"{feas_rate:.1f}",
                     "Min feasible W_max": f"{min_w:.2f}" if np.isfinite(min_w) else "-",
@@ -200,7 +211,7 @@ def generate_results_report_word(
         else:
             rows.append(
                 {
-                    "Scenario": sc,
+                    scenario_label: sc,
                     "Runs": n,
                     "Feasible (%)": f"{feas_rate:.1f}",
                     "Min feasible W_max": f"{min_w:.2f}" if np.isfinite(min_w) else "-",
@@ -211,12 +222,31 @@ def generate_results_report_word(
                 }
             )
 
-    add_par(
-        "Table 1 summarizes feasibility rates and best-achieved balanced satisfaction by uncertainty scenario."
-    )
+    add_par("Table 1 summarizes feasibility rates and best-achieved balanced satisfaction by analysis group.")
     add_table(pd.DataFrame(rows), caption="Table 1. Scenario-level feasibility and best MOFGPM outcomes.")
 
-    doc.add_heading("4. Cost-Service Tradeoff Map (MOFGPM Interpretation)", level=1)
+    doc.add_heading("4. Cross-Scenario Integrated Diagnostics", level=1)
+    integ_rows = []
+    for sc in scenarios:
+        sub = df[df[scenario_col] == sc]
+        feas = sub[sub["feasible"] & np.isfinite(sub["lambda"])]
+        integ_rows.append(
+            {
+                scenario_label: sc,
+                "Samples": len(sub),
+                "Feasible (%)": f"{pct(int(sub['feasible'].sum()), len(sub)):.1f}",
+                "Median lambda (feasible)": f"{float(feas['lambda'].median()):.3f}" if not feas.empty else "-",
+                "P90 lambda (feasible)": f"{float(feas['lambda'].quantile(0.90)):.3f}" if not feas.empty else "-",
+                "Mean cost": f"{float(pd.to_numeric(sub['cost'], errors='coerce').mean()):.2f}",
+                "Mean wait": f"{float(pd.to_numeric(sub['wait'], errors='coerce').mean()):.2f}",
+            }
+        )
+    add_table(
+        pd.DataFrame(integ_rows),
+        caption="Table 2. Integrated performance diagnostics across scenario groups.",
+    )
+
+    doc.add_heading("5. Cost-Service Tradeoff Map (MOFGPM Interpretation)", level=1)
     feasible = df[df["feasible"] & np.isfinite(df["lambda"])].copy()
     if feasible.empty:
         add_par("No feasible solutions were found in the provided results.")
@@ -238,9 +268,9 @@ def generate_results_report_word(
             topk_disp[wmax_col] = topk_disp[wmax_col].map(
                 lambda x: f"{float(x):.2f}" if np.isfinite(x) else "-"
             )
-        add_table(topk_disp, caption="Table 2. Top feasible solutions (ranked by lambda, then cost and wait).")
+        add_table(topk_disp, caption="Table 3. Top feasible solutions (ranked by lambda, then cost and wait).")
 
-    doc.add_heading("5. Feasibility Boundary Diagnostics", level=1)
+    doc.add_heading("6. Feasibility Boundary Diagnostics", level=1)
     if not has_wmax:
         add_par(
             f"A W_max sweep was not detected (column '{wmax_col}' not found)."
@@ -252,14 +282,14 @@ def generate_results_report_word(
             mfw = min_wmax_feasible(sub)
             boundary_rows.append(
                 {
-                    "Scenario": sc,
+                    scenario_label: sc,
                     "Min feasible W_max": f"{mfw:.2f}" if np.isfinite(mfw) else "-",
                 }
             )
-        add_table(pd.DataFrame(boundary_rows), caption="Table 3. Minimum feasible W_max by scenario.")
+        add_table(pd.DataFrame(boundary_rows), caption="Table 4. Minimum feasible W_max by scenario group.")
 
     if figures:
-        doc.add_heading("6. Figures", level=1)
+        doc.add_heading("7. Figures", level=1)
         for cap, path in figures.items():
             try:
                 doc.add_picture(path, width=Inches(6.5))
@@ -267,10 +297,10 @@ def generate_results_report_word(
             except Exception:
                 add_par(f"[Unverified] Could not insert figure: {cap} ({path})")
 
-    doc.add_heading("7. Summary", level=1)
+    doc.add_heading("8. Summary", level=1)
     add_par(
-        "Results are presented as baseline performance plus a feasibility and tradeoff map. "
-        "Sensitivity outputs identify what is feasible, what binds first, and what cost is associated with service improvements."
+        "Results are presented as baseline performance plus integrated feasibility and tradeoff diagnostics. "
+        "Merged sensitivity outputs identify robust feasible regions, likely binding objectives, and the cost associated with service improvements."
     )
 
     doc.save(out_path)

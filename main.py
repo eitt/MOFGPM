@@ -66,6 +66,8 @@ NUM_PATIENTS = _env("NUM_PATIENTS", 36, int)
 DATA_SEED = _env("DATA_SEED", 42, int)
 T_MAX_DAY = _env("T_MAX_DAY", 1440.0, float)
 N_SAMPLES_PER_LEVEL = _env("N_SAMPLES_PER_LEVEL", 25, int)
+FORCE_NUM_PATIENTS = _env_bool("FORCE_NUM_PATIENTS", False)
+MAX_PATIENT_GEN_TRIES = _env("MAX_PATIENT_GEN_TRIES", 200, int)
 
 # GA params:
 POP_SIZE = _env("POP_SIZE", 200, int)
@@ -298,21 +300,56 @@ def per_level_cumsum_union_sort(df_sim: pd.DataFrame) -> pd.DataFrame:
     df_long = df_long.sort_values("Arrival Time").reset_index(drop=True)
     return df_long
 
-def assign_arrivals_and_triage_single_day(num_patients, seed=1952, t_max=1440.0, n_samples_per_level=36):
+def assign_arrivals_and_triage_single_day(
+    num_patients,
+    seed=1952,
+    t_max=1440.0,
+    n_samples_per_level=36,
+    enforce_exact=False,
+    max_tries=200,
+):
     rng = np.random.default_rng(seed)
-    seed_day = int(rng.integers(0, 2**31 - 1))
-
     map_level = {"Triage I": 1, "Triage II": 2, "Triage III": 3, "Triage IV": 4, "Triage V": 5}
+    best_df_day = None
+    best_seed_day = None
+    chosen_df_day = None
+    chosen_seed_day = None
 
-    df_sim = generate_triage_simulation(n_samples=n_samples_per_level, seed=seed_day)
-    df_ord = per_level_cumsum_union_sort(df_sim)
-    df_day = df_ord[df_ord["Arrival Time"] <= t_max].copy().reset_index(drop=True)
+    for _ in range(max(1, int(max_tries))):
+        seed_day = int(rng.integers(0, 2**31 - 1))
+        df_sim = generate_triage_simulation(n_samples=n_samples_per_level, seed=seed_day)
+        df_ord = per_level_cumsum_union_sort(df_sim)
+        df_day = df_ord[df_ord["Arrival Time"] <= t_max].copy().reset_index(drop=True)
 
-    if len(df_day) == 0:
-        raise ValueError(f"No patients generated with t<= {t_max} (seed_day={seed_day}).")
+        if best_df_day is None or len(df_day) > len(best_df_day):
+            best_df_day = df_day
+            best_seed_day = seed_day
 
-    take_n = min(num_patients, len(df_day))
-    df_take = df_day.iloc[:take_n].copy().reset_index(drop=True)
+        if len(df_day) >= num_patients:
+            chosen_df_day = df_day
+            chosen_seed_day = seed_day
+            break
+
+    if chosen_df_day is None:
+        if best_df_day is None or len(best_df_day) == 0:
+            raise ValueError(f"No patients generated with t<= {t_max} after {max_tries} tries.")
+        if enforce_exact:
+            raise ValueError(
+                f"Could not generate requested NUM_PATIENTS={num_patients} with t<= {t_max} "
+                f"after {max_tries} tries (best={len(best_df_day)}, seed_day={best_seed_day}). "
+                "Increase T_MAX_DAY and/or N_SAMPLES_PER_LEVEL."
+            )
+        chosen_df_day = best_df_day
+        chosen_seed_day = best_seed_day
+
+    take_n = min(num_patients, len(chosen_df_day))
+    if take_n < num_patients:
+        print(
+            f"[Warning] Requested {num_patients} patients but only {take_n} were available "
+            f"within t<= {t_max} (seed_day={chosen_seed_day})."
+        )
+
+    df_take = chosen_df_day.iloc[:take_n].copy().reset_index(drop=True)
     df_take["Patient"] = [f"P{i+1}" for i in range(take_n)]
 
     arrival_times, triage_level, patient_route_idx = {}, {}, {}
@@ -680,7 +717,9 @@ arrival_times_day, triage_level_day, route_idx_day, df_take = assign_arrivals_an
     num_patients=NUM_PATIENTS,
     seed=DATA_SEED,
     t_max=T_MAX_DAY,
-    n_samples_per_level=N_SAMPLES_PER_LEVEL
+    n_samples_per_level=N_SAMPLES_PER_LEVEL,
+    enforce_exact=FORCE_NUM_PATIENTS,
+    max_tries=MAX_PATIENT_GEN_TRIES,
 )
 
 # Build ED data for selected fuzzy scenario
@@ -755,6 +794,37 @@ def _extract_wait_metrics(data_obj, schedule, sample_id, scenario, is_feasible):
                 "feasible": bool(is_feasible),
             }
         )
+    return rows
+
+
+def _extract_schedule_rows(data_obj, schedule, sample_id, scenario, is_feasible, staff):
+    rows = []
+    for (p, act), start in schedule.items():
+        duration = float(data_obj.eff_duration[(p, act)])
+        end = float(start + duration)
+        req_flags = {r: int(data_obj.reqs[(p, act, r)]) for r in data_obj.resources}
+        req_active = [r for r, v in req_flags.items() if v == 1]
+        row = {
+            "scenario": scenario,
+            "sample_id": int(sample_id),
+            "patient": p,
+            "triage": int(data_obj.triage_level[p]),
+            "activity": act,
+            "task_j": int(data_obj.task_j[(p, act)]),
+            "start": float(start),
+            "end": end,
+            "duration": duration,
+            "feasible": bool(is_feasible),
+            "Doctor": int(staff.get("Doctor", 0)),
+            "Nurse": int(staff.get("Nurse", 0)),
+            "Assistant": int(staff.get("Assistant", 0)),
+            "Specialist": int(staff.get("Specialist", 0)),
+            "required_resources": ",".join(req_active),
+        }
+        for r, v in req_flags.items():
+            row[f"req_{r}"] = int(v)
+        rows.append(row)
+    rows.sort(key=lambda x: (x["sample_id"], x["start"], x["patient"], x["task_j"]))
     return rows
 
 
@@ -940,6 +1010,7 @@ def plot_triage_wait_distribution(triage_df):
 
 records = []
 triage_wait_records = []
+schedule_records = []
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 run_settings = {
@@ -953,6 +1024,8 @@ run_settings = {
     "DATA_SEED": DATA_SEED,
     "T_MAX_DAY": T_MAX_DAY,
     "N_SAMPLES_PER_LEVEL": N_SAMPLES_PER_LEVEL,
+    "FORCE_NUM_PATIENTS": FORCE_NUM_PATIENTS,
+    "MAX_PATIENT_GEN_TRIES": MAX_PATIENT_GEN_TRIES,
     "POP_SIZE": POP_SIZE,
     "GENERATIONS": GENERATIONS,
     "MUT_RATE": MUT_RATE,
@@ -1019,6 +1092,9 @@ for idx, staff in enumerate(staff_list, 1):
     triage_wait_records.extend(
         _extract_wait_metrics(data, best["sched"], idx, FUZZY_SCENARIO, rec["feasible"])
     )
+    schedule_records.extend(
+        _extract_schedule_rows(data, best["sched"], idx, FUZZY_SCENARIO, rec["feasible"], staff)
+    )
 
     status = "FEASIBLE" if rec["feasible"] else "INFEASIBLE"
     print(f"[{idx:02d}/{len(staff_list)}] staff={staff} -> "
@@ -1037,6 +1113,8 @@ print(df.head(10).to_string(index=False))
 
 triage_df = pd.DataFrame(triage_wait_records)
 triage_df.to_csv(OUTPUT_DIR / "triage_waits_by_sample.csv", index=False)
+schedule_df = pd.DataFrame(schedule_records)
+schedule_df.to_csv(OUTPUT_DIR / "schedule_by_sample.csv", index=False)
 
 # Backward-compatible core scatters (aesthetic update, no titles)
 fig, ax = plt.subplots(figsize=(8.8, 5.6))
