@@ -300,7 +300,7 @@ def generate_results_report_word(
     doc.add_heading("8. Summary", level=1)
     add_par(
         "Results are presented as baseline performance plus integrated feasibility and tradeoff diagnostics. "
-        "Merged sensitivity outputs identify robust feasible regions, likely binding objectives, and the cost associated with service improvements."
+        "Merged exploration outputs (random sampling and combinatorics) identify robust feasible regions, likely binding objectives, and the cost associated with service improvements."
     )
 
     doc.save(out_path)

@@ -3,7 +3,8 @@
 # MOFGPM (Max–Min Fuzzy Goal Programming) + Jiménez linearization
 # Run ONE fuzzy scenario with:
 #   (A) fixed staff (fixed cost)  OR
-#   (B) random staff samples to study sensitivity of cost/wait/lambda
+#   (B) random staff samples to study sensitivity of cost/wait/lambda OR
+#   (C) combinatorics staff sweep (all configured combinations)
 #
 # Requirements: numpy, pandas, matplotlib, scipy
 # ============================================================
@@ -12,6 +13,7 @@ import json
 import os
 import random
 import time
+import itertools
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -33,6 +35,13 @@ def _env_bool(name, default=False):
         return default
     return str(raw).strip().lower() in {"1", "true", "yes", "y", "on"}
 
+
+def _normalize_run_mode(mode_raw: str) -> str:
+    mode = str(mode_raw).strip().lower()
+    if mode in {"combination", "cobination"}:
+        return "combinatorics"
+    return mode
+
 # -------------------------
 # USER SETTINGS (EDIT HERE)
 # -------------------------
@@ -41,7 +50,7 @@ def _env_bool(name, default=False):
 FUZZY_SCENARIO = _env("FUZZY_SCENARIO", "expected", str)  # "optimistic" | "expected" | "pessimistic"
 
 # Choose run mode:
-RUN_MODE = _env("RUN_MODE", "fixed", str)  # "fixed" | "random"
+RUN_MODE = _normalize_run_mode(_env("RUN_MODE", "fixed", str))  # "fixed" | "random" | "combinatorics"
 
 # If RUN_MODE == "fixed":
 FIXED_STAFF = {
@@ -60,6 +69,15 @@ STAFF_BOUNDS = {
     "Specialist": (_env("BOUND_SPECIALIST_LO", 0, int), _env("BOUND_SPECIALIST_HI", 2, int)),
 }
 RANDOM_STAFF_SEED = _env("RANDOM_STAFF_SEED", 202600, int)
+
+# If RUN_MODE == "combinatorics":
+COMBINATORICS_BOUNDS = {
+    "Doctor": (_env("COMBO_BOUND_DOCTOR_LO", 1, int), _env("COMBO_BOUND_DOCTOR_HI", 6, int)),
+    "Nurse": (_env("COMBO_BOUND_NURSE_LO", 1, int), _env("COMBO_BOUND_NURSE_HI", 8, int)),
+    "Assistant": (_env("COMBO_BOUND_ASSISTANT_LO", 1, int), _env("COMBO_BOUND_ASSISTANT_HI", 10, int)),
+    "Specialist": (_env("COMBO_BOUND_SPECIALIST_LO", 1, int), _env("COMBO_BOUND_SPECIALIST_HI", 2, int)),
+}
+COMBO_EXPECTED_TOTAL = _env("COMBO_EXPECTED_TOTAL", 960, int)
 
 # Day / patient generation:
 NUM_PATIENTS = _env("NUM_PATIENTS", 36, int)
@@ -709,7 +727,7 @@ class RobustGAScheduler:
         return best
 
 # ============================================================
-# 7) Run ONE scenario with fixed staff OR random staff sensitivity
+# 7) Run ONE scenario with fixed, random, or combinatorics staffing
 # ============================================================
 
 # Generate the day once (same patients)
@@ -740,7 +758,33 @@ def sample_staff(bounds, rng):
     return staff
 
 
-def _extract_wait_metrics(data_obj, schedule, sample_id, scenario, is_feasible):
+def enumerate_staff_combinations(bounds):
+    resources = ["Doctor", "Nurse", "Assistant", "Specialist"]
+    levels = []
+    for r in resources:
+        if r not in bounds:
+            raise ValueError(f"Missing combinatorics bound for resource '{r}'.")
+        lo, hi = bounds[r]
+        lo = int(lo)
+        hi = int(hi)
+        if hi < lo:
+            raise ValueError(f"Invalid combinatorics bounds for '{r}': lo={lo}, hi={hi}.")
+        levels.append(range(lo, hi + 1))
+
+    combos = []
+    for d, n, a, s in itertools.product(*levels):
+        combos.append(
+            {
+                "Doctor": int(d),
+                "Nurse": int(n),
+                "Assistant": int(a),
+                "Specialist": int(s),
+            }
+        )
+    return combos
+
+
+def _extract_wait_metrics(data_obj, schedule, sample_id, scenario, run_mode, is_feasible):
     rows = []
     for p in data_obj.patients:
         acts = data_obj.activities[p]
@@ -749,6 +793,7 @@ def _extract_wait_metrics(data_obj, schedule, sample_id, scenario, is_feasible):
             rows.append(
                 {
                     "scenario": scenario,
+                    "run_mode": run_mode,
                     "sample_id": int(sample_id),
                     "patient": p,
                     "triage": int(data_obj.triage_level[p]),
@@ -785,6 +830,7 @@ def _extract_wait_metrics(data_obj, schedule, sample_id, scenario, is_feasible):
         rows.append(
             {
                 "scenario": scenario,
+                "run_mode": run_mode,
                 "sample_id": int(sample_id),
                 "patient": p,
                 "triage": int(data_obj.triage_level[p]),
@@ -797,7 +843,7 @@ def _extract_wait_metrics(data_obj, schedule, sample_id, scenario, is_feasible):
     return rows
 
 
-def _extract_schedule_rows(data_obj, schedule, sample_id, scenario, is_feasible, staff):
+def _extract_schedule_rows(data_obj, schedule, sample_id, scenario, run_mode, is_feasible, staff):
     rows = []
     for (p, act), start in schedule.items():
         duration = float(data_obj.eff_duration[(p, act)])
@@ -806,6 +852,7 @@ def _extract_schedule_rows(data_obj, schedule, sample_id, scenario, is_feasible,
         req_active = [r for r, v in req_flags.items() if v == 1]
         row = {
             "scenario": scenario,
+            "run_mode": run_mode,
             "sample_id": int(sample_id),
             "patient": p,
             "triage": int(data_obj.triage_level[p]),
@@ -894,7 +941,7 @@ def plot_membership_decomposition(df):
     if x_col == "wmax":
         ax.set_xlabel(r"$W_{max}$ (wait tolerance)")
     else:
-        ax.set_xlabel("Staff sample index")
+        ax.set_xlabel("Staff combination index" if RUN_MODE == "combinatorics" else "Staff sample index")
     ax.set_ylabel("Satisfaction / membership")
     ax.set_ylim(-0.02, 1.02)
     ax.legend(loc="best")
@@ -1020,6 +1067,8 @@ run_settings = {
     "N_STAFF_SAMPLES": N_STAFF_SAMPLES,
     "STAFF_BOUNDS": STAFF_BOUNDS,
     "RANDOM_STAFF_SEED": RANDOM_STAFF_SEED,
+    "COMBINATORICS_BOUNDS": COMBINATORICS_BOUNDS,
+    "COMBO_EXPECTED_TOTAL": COMBO_EXPECTED_TOTAL,
     "NUM_PATIENTS": NUM_PATIENTS,
     "DATA_SEED": DATA_SEED,
     "T_MAX_DAY": T_MAX_DAY,
@@ -1040,20 +1089,29 @@ run_settings = {
     "EXP_CENTER": EXP_CENTER,
 }
 
-with open(OUTPUT_DIR / "settings.json", "w", encoding="utf-8") as fp:
-    json.dump(run_settings, fp, indent=2)
-
 if RUN_MODE == "fixed":
     staff_list = [FIXED_STAFF]
 elif RUN_MODE == "random":
     rng = np.random.default_rng(RANDOM_STAFF_SEED)
     staff_list = [sample_staff(STAFF_BOUNDS, rng) for _ in range(N_STAFF_SAMPLES)]
+elif RUN_MODE == "combinatorics":
+    staff_list = enumerate_staff_combinations(COMBINATORICS_BOUNDS)
+    if COMBO_EXPECTED_TOTAL > 0 and len(staff_list) != COMBO_EXPECTED_TOTAL:
+        raise ValueError(
+            f"Combinatorics mode produced {len(staff_list)} combinations, "
+            f"expected {COMBO_EXPECTED_TOTAL}. Update COMBO_* bounds or COMBO_EXPECTED_TOTAL."
+        )
 else:
-    raise ValueError("RUN_MODE must be 'fixed' or 'random'.")
+    raise ValueError("RUN_MODE must be 'fixed', 'random', or 'combinatorics'.")
+
+run_settings["TOTAL_STAFF_CONFIGS"] = len(staff_list)
+with open(OUTPUT_DIR / "settings.json", "w", encoding="utf-8") as fp:
+    json.dump(run_settings, fp, indent=2)
 
 print("\n" + "=" * 80)
 print(f"Scenario: {FUZZY_SCENARIO.upper()} | Mode: {RUN_MODE.upper()}")
 print(f"Patients used: {data.num_patients} (t<= {T_MAX_DAY})")
+print(f"Staff configurations: {len(staff_list)}")
 print("=" * 80)
 
 for idx, staff in enumerate(staff_list, 1):
@@ -1073,6 +1131,7 @@ for idx, staff in enumerate(staff_list, 1):
 
     rec = {
         "scenario": FUZZY_SCENARIO,
+        "run_mode": RUN_MODE,
         "sample_id": idx,
         "Doctor": staff["Doctor"],
         "Nurse": staff["Nurse"],
@@ -1090,10 +1149,10 @@ for idx, staff in enumerate(staff_list, 1):
     }
     records.append(rec)
     triage_wait_records.extend(
-        _extract_wait_metrics(data, best["sched"], idx, FUZZY_SCENARIO, rec["feasible"])
+        _extract_wait_metrics(data, best["sched"], idx, FUZZY_SCENARIO, RUN_MODE, rec["feasible"])
     )
     schedule_records.extend(
-        _extract_schedule_rows(data, best["sched"], idx, FUZZY_SCENARIO, rec["feasible"], staff)
+        _extract_schedule_rows(data, best["sched"], idx, FUZZY_SCENARIO, RUN_MODE, rec["feasible"], staff)
     )
 
     status = "FEASIBLE" if rec["feasible"] else "INFEASIBLE"

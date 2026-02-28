@@ -64,57 +64,72 @@ def run_methodology(repo_dir: Path, method_dir: Path) -> None:
             shutil.copy2(src, method_dir / name)
 
 
-def _collect_results_frames(fixed_dir: Path, random_dir: Path) -> pd.DataFrame:
+def _collect_results_frames(fixed_dir: Path, random_dir: Path, combinatorics_dir: Path) -> pd.DataFrame:
     frames = []
-    fixed_csv = fixed_dir / "results.csv"
-    random_csv = random_dir / "results.csv"
-    if fixed_csv.exists():
-        dff = pd.read_csv(fixed_csv)
-        dff["run_folder"] = "fixed"
-        frames.append(dff)
-    if random_csv.exists():
-        dfr = pd.read_csv(random_csv)
-        dfr["run_folder"] = "sensitivity"
-        frames.append(dfr)
+    sources = [
+        ("fixed", fixed_dir),
+        ("sensitivity", random_dir),
+        ("combinatorics", combinatorics_dir),
+    ]
+    for run_folder, run_dir in sources:
+        csv_path = run_dir / "results.csv"
+        if not csv_path.exists():
+            continue
+        frame = pd.read_csv(csv_path)
+        frame["run_folder"] = run_folder
+        if "run_mode" not in frame.columns:
+            frame["run_mode"] = "random" if run_folder == "sensitivity" else run_folder
+        frames.append(frame)
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
 
 
-def _build_figure_map(fixed_dir: Path, random_dir: Path) -> dict:
+def _build_figure_map(fixed_dir: Path, random_dir: Path, combinatorics_dir: Path) -> dict:
     mapping = {}
-    candidates = [
-        ("Figure 1. Cost-Wait scatter (lambda encoding) - Fixed", fixed_dir / "plot_cost_wait_scatter_lambda.png"),
-        ("Figure 2. Membership decomposition - Fixed", fixed_dir / "plot_membership_decomposition.png"),
-        ("Figure 3. Feasibility heatmap (Doctor x Nurse) - Fixed", fixed_dir / "plot_feasibility_heatmap_doctor_nurse.png"),
-        ("Figure 4. Triage first-wait boxplot - Fixed", fixed_dir / "plot_triage_first_wait_boxplot.png"),
-        ("Figure 5. Cost-Wait scatter (lambda encoding) - Sensitivity", random_dir / "plot_cost_wait_scatter_lambda.png"),
-        ("Figure 6. Membership decomposition - Sensitivity", random_dir / "plot_membership_decomposition.png"),
-        ("Figure 7. Feasibility heatmap (Doctor x Nurse) - Sensitivity", random_dir / "plot_feasibility_heatmap_doctor_nurse.png"),
-        ("Figure 8. Triage first-wait ECDF - Sensitivity", random_dir / "plot_triage_first_wait_ecdf.png"),
-        ("Figure 9. Baseline schedule overview (t<=1440)", fixed_dir / "plot_baseline_schedule_tmax1440.png"),
-    ]
-    for caption, p in candidates:
-        if p.exists():
-            mapping[caption] = str(p)
+    figure_idx = 1
+
+    def add_mode_figures(mode_label: str, mode_dir: Path) -> None:
+        nonlocal figure_idx
+        candidates = [
+            (f"Cost-Wait scatter (lambda encoding) - {mode_label}", mode_dir / "plot_cost_wait_scatter_lambda.png"),
+            (f"Membership decomposition - {mode_label}", mode_dir / "plot_membership_decomposition.png"),
+            (f"Feasibility heatmap (Doctor x Nurse) - {mode_label}", mode_dir / "plot_feasibility_heatmap_doctor_nurse.png"),
+            (f"Triage first-wait boxplot - {mode_label}", mode_dir / "plot_triage_first_wait_boxplot.png"),
+            (f"Triage first-wait ECDF - {mode_label}", mode_dir / "plot_triage_first_wait_ecdf.png"),
+        ]
+        for suffix, p in candidates:
+            if p.exists():
+                mapping[f"Figure {figure_idx}. {suffix}"] = str(p)
+                figure_idx += 1
+
+    add_mode_figures("Fixed", fixed_dir)
+    add_mode_figures("Sensitivity", random_dir)
+    add_mode_figures("Combinatorics", combinatorics_dir)
+
+    baseline_plot = fixed_dir / "plot_baseline_schedule_tmax1440.png"
+    if baseline_plot.exists():
+        mapping[f"Figure {figure_idx}. Baseline schedule overview (t<=1440)"] = str(baseline_plot)
     return mapping
 
 
-def _build_history_figure_map(history_dir: Path) -> dict:
+def _build_history_figure_map(history_dir: Path, start_index: int = 1) -> dict:
     mapping = {}
+    figure_idx = int(start_index)
     candidates = [
-        ("Figure 10. Best lambda by operational scenario key", history_dir / "plot_history_best_lambda_by_scenario_key.png"),
-        ("Figure 11. Lambda distribution by operational scenario key", history_dir / "plot_history_lambda_boxplot_by_scenario_key.png"),
-        ("Figure 12. Lambda density (feasible vs infeasible)", history_dir / "plot_history_lambda_density.png"),
-        ("Figure 13. Lambda vs resource levels", history_dir / "plot_history_lambda_vs_resource_levels.png"),
-        ("Figure 14. Operational Pareto overview", history_dir / "plot_history_operational_pareto_overview.png"),
-        ("Figure 15. Cost-Wait scatter (all merged runs)", history_dir / "plot_history_cost_wait_scatter_all_runs.png"),
-        ("Figure 16. Mean lambda heatmap (Doctor x Nurse)", history_dir / "plot_history_mean_lambda_heatmap_doctor_nurse.png"),
-        ("Figure 17. Triage first-wait ECDF (merged)", history_dir / "plot_history_triage_first_wait_ecdf.png"),
+        ("Best lambda by operational scenario key", history_dir / "plot_history_best_lambda_by_scenario_key.png"),
+        ("Lambda distribution by operational scenario key", history_dir / "plot_history_lambda_boxplot_by_scenario_key.png"),
+        ("Lambda density (feasible vs infeasible)", history_dir / "plot_history_lambda_density.png"),
+        ("Lambda vs resource levels", history_dir / "plot_history_lambda_vs_resource_levels.png"),
+        ("Operational Pareto overview", history_dir / "plot_history_operational_pareto_overview.png"),
+        ("Cost-Wait scatter (all merged runs)", history_dir / "plot_history_cost_wait_scatter_all_runs.png"),
+        ("Mean lambda heatmap (Doctor x Nurse)", history_dir / "plot_history_mean_lambda_heatmap_doctor_nurse.png"),
+        ("Triage first-wait ECDF (merged)", history_dir / "plot_history_triage_first_wait_ecdf.png"),
     ]
-    for caption, p in candidates:
+    for suffix, p in candidates:
         if p.exists():
-            mapping[caption] = str(p)
+            mapping[f"Figure {figure_idx}. {suffix}"] = str(p)
+            figure_idx += 1
     return mapping
 
 
@@ -136,61 +151,74 @@ def _load_json(path: Path) -> dict:
 def _collect_sensitivity_history(base_outputs_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     frames = []
     triage_frames = []
+    mode_dirs = [("sensitivity", "random"), ("combinatorics", "combinatorics")]
 
     run_dirs = sorted([p for p in base_outputs_dir.glob("run_*") if p.is_dir()])
     for run_dir in run_dirs:
-        sens_dir = run_dir / "sensitivity"
-        results_csv = sens_dir / "results.csv"
-        if not results_csv.exists():
-            continue
+        for folder_name, default_mode in mode_dirs:
+            mode_dir = run_dir / folder_name
+            results_csv = mode_dir / "results.csv"
+            if not results_csv.exists():
+                continue
 
-        try:
-            df = pd.read_csv(results_csv)
-        except Exception:
-            continue
-
-        settings = _load_json(sens_dir / "settings.json")
-        df["run_dir"] = str(run_dir.resolve())
-        df["run_tag"] = _extract_run_tag(run_dir)
-        df["fuzzy_scenario"] = settings.get("FUZZY_SCENARIO")
-        df["configured_num_patients"] = settings.get("NUM_PATIENTS")
-        df["t_max_day"] = settings.get("T_MAX_DAY")
-        df["n_samples_per_level"] = settings.get("N_SAMPLES_PER_LEVEL")
-        df["random_staff_seed"] = settings.get("RANDOM_STAFF_SEED")
-        df["goal_wait"] = settings.get("GOAL_WAIT")
-        df["max_wait"] = settings.get("MAX_WAIT")
-        df["goal_cost"] = settings.get("GOAL_COST")
-        df["max_cost"] = settings.get("MAX_COST")
-        df["exp_center"] = settings.get("EXP_CENTER")
-        df["pop_size"] = settings.get("POP_SIZE")
-        df["generations"] = settings.get("GENERATIONS")
-        df["mut_rate"] = settings.get("MUT_RATE")
-        df["scenario_key"] = (
-            "FZ="
-            + df["fuzzy_scenario"].astype(str)
-            + "|P="
-            + df["configured_num_patients"].astype(str)
-            + "|T="
-            + df["t_max_day"].astype(str)
-            + "|NS="
-            + df["n_samples_per_level"].astype(str)
-            + "|GW="
-            + df["goal_wait"].astype(str)
-            + "|MW="
-            + df["max_wait"].astype(str)
-        )
-        frames.append(df)
-
-        triage_csv = sens_dir / "triage_waits_by_sample.csv"
-        if triage_csv.exists():
             try:
-                tdf = pd.read_csv(triage_csv)
+                df = pd.read_csv(results_csv)
             except Exception:
-                tdf = pd.DataFrame()
-            if not tdf.empty:
-                tdf["run_dir"] = str(run_dir.resolve())
-                tdf["run_tag"] = _extract_run_tag(run_dir)
-                triage_frames.append(tdf)
+                continue
+
+            settings = _load_json(mode_dir / "settings.json")
+            run_mode = str(settings.get("RUN_MODE", default_mode)).lower()
+            if run_mode == "combination":
+                run_mode = "combinatorics"
+
+            df["run_dir"] = str(run_dir.resolve())
+            df["run_tag"] = _extract_run_tag(run_dir)
+            df["run_mode"] = run_mode
+            df["history_source_folder"] = folder_name
+            df["fuzzy_scenario"] = settings.get("FUZZY_SCENARIO")
+            df["configured_num_patients"] = settings.get("NUM_PATIENTS")
+            df["t_max_day"] = settings.get("T_MAX_DAY")
+            df["n_samples_per_level"] = settings.get("N_SAMPLES_PER_LEVEL")
+            df["random_staff_seed"] = settings.get("RANDOM_STAFF_SEED")
+            df["combo_expected_total"] = settings.get("COMBO_EXPECTED_TOTAL")
+            df["goal_wait"] = settings.get("GOAL_WAIT")
+            df["max_wait"] = settings.get("MAX_WAIT")
+            df["goal_cost"] = settings.get("GOAL_COST")
+            df["max_cost"] = settings.get("MAX_COST")
+            df["exp_center"] = settings.get("EXP_CENTER")
+            df["pop_size"] = settings.get("POP_SIZE")
+            df["generations"] = settings.get("GENERATIONS")
+            df["mut_rate"] = settings.get("MUT_RATE")
+            df["scenario_key"] = (
+                "MODE="
+                + df["run_mode"].astype(str)
+                + "|FZ="
+                + df["fuzzy_scenario"].astype(str)
+                + "|P="
+                + df["configured_num_patients"].astype(str)
+                + "|T="
+                + df["t_max_day"].astype(str)
+                + "|NS="
+                + df["n_samples_per_level"].astype(str)
+                + "|GW="
+                + df["goal_wait"].astype(str)
+                + "|MW="
+                + df["max_wait"].astype(str)
+            )
+            frames.append(df)
+
+            triage_csv = mode_dir / "triage_waits_by_sample.csv"
+            if triage_csv.exists():
+                try:
+                    tdf = pd.read_csv(triage_csv)
+                except Exception:
+                    tdf = pd.DataFrame()
+                if not tdf.empty:
+                    tdf["run_dir"] = str(run_dir.resolve())
+                    tdf["run_tag"] = _extract_run_tag(run_dir)
+                    tdf["run_mode"] = run_mode
+                    tdf["history_source_folder"] = folder_name
+                    triage_frames.append(tdf)
 
     history = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     triage_history = pd.concat(triage_frames, ignore_index=True) if triage_frames else pd.DataFrame()
@@ -505,12 +533,12 @@ def _plot_baseline_schedule(fixed_dir: Path) -> Path | None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run MOFGPM pipeline end-to-end with fixed/sensitivity folders and methodology outputs."
+        description="Run MOFGPM pipeline end-to-end with fixed/sensitivity/combinatorics folders and methodology outputs."
     )
     parser.add_argument("--install-deps", action="store_true", help="Install Python deps from requirements.txt first.")
     parser.add_argument(
         "--modes",
-        choices=["both", "fixed", "random"],
+        choices=["both", "fixed", "random", "combinatorics", "combination", "cobination"],
         default="both",
         help="Which pipeline modes to run.",
     )
@@ -519,7 +547,7 @@ def main():
     parser.add_argument(
         "--history-analysis-dir",
         default="analysis/sensitivity_history",
-        help="Folder (relative to --outdir) for cross-run sensitivity CSV/plots.",
+        help="Folder (relative to --outdir) for cross-run random/combinatorics CSV/plots.",
     )
 
     # Settings exposed from USER SETTINGS.
@@ -537,6 +565,15 @@ def main():
     parser.add_argument("--bound-assistant-hi", type=int, default=10)
     parser.add_argument("--bound-specialist-lo", type=int, default=0)
     parser.add_argument("--bound-specialist-hi", type=int, default=2)
+    parser.add_argument("--combo-bound-doctor-lo", type=int, default=1)
+    parser.add_argument("--combo-bound-doctor-hi", type=int, default=6)
+    parser.add_argument("--combo-bound-nurse-lo", type=int, default=1)
+    parser.add_argument("--combo-bound-nurse-hi", type=int, default=8)
+    parser.add_argument("--combo-bound-assistant-lo", type=int, default=1)
+    parser.add_argument("--combo-bound-assistant-hi", type=int, default=10)
+    parser.add_argument("--combo-bound-specialist-lo", type=int, default=1)
+    parser.add_argument("--combo-bound-specialist-hi", type=int, default=2)
+    parser.add_argument("--combo-expected-total", type=int, default=960)
     parser.add_argument("--random-staff-seed", type=int, default=202600)
     parser.add_argument("--num-patients", type=int, default=36)   #Number of patients
     parser.add_argument("--data-seed", type=int, default=1951)
@@ -571,6 +608,8 @@ def main():
     parser.add_argument("--exp-center", default="median", choices=["median", "mean"])
 
     args = parser.parse_args()
+    if args.modes in {"combination", "cobination"}:
+        args.modes = "combinatorics"
     repo_dir = Path(__file__).resolve().parent
 
     if args.install_deps:
@@ -585,6 +624,7 @@ def main():
     base_out = (repo_dir / args.outdir / f"run_{args.tag}").resolve()
     fixed_dir = base_out / "fixed"
     random_dir = base_out / "sensitivity"
+    combinatorics_dir = base_out / "combinatorics"
     methodology_dir = base_out / "methodology"
     base_out.mkdir(parents=True, exist_ok=True)
 
@@ -605,6 +645,15 @@ def main():
             "BOUND_ASSISTANT_HI": str(args.bound_assistant_hi),
             "BOUND_SPECIALIST_LO": str(args.bound_specialist_lo),
             "BOUND_SPECIALIST_HI": str(args.bound_specialist_hi),
+            "COMBO_BOUND_DOCTOR_LO": str(args.combo_bound_doctor_lo),
+            "COMBO_BOUND_DOCTOR_HI": str(args.combo_bound_doctor_hi),
+            "COMBO_BOUND_NURSE_LO": str(args.combo_bound_nurse_lo),
+            "COMBO_BOUND_NURSE_HI": str(args.combo_bound_nurse_hi),
+            "COMBO_BOUND_ASSISTANT_LO": str(args.combo_bound_assistant_lo),
+            "COMBO_BOUND_ASSISTANT_HI": str(args.combo_bound_assistant_hi),
+            "COMBO_BOUND_SPECIALIST_LO": str(args.combo_bound_specialist_lo),
+            "COMBO_BOUND_SPECIALIST_HI": str(args.combo_bound_specialist_hi),
+            "COMBO_EXPECTED_TOTAL": str(args.combo_expected_total),
             "RANDOM_STAFF_SEED": str(args.random_staff_seed),
             "NUM_PATIENTS": str(args.num_patients),
             "DATA_SEED": str(args.data_seed),
@@ -644,14 +693,19 @@ def main():
         random_env["RUN_MODE"] = "random"
         run_main(repo_dir, random_env, random_dir)
 
+    if args.modes == "combinatorics":
+        combo_env = dict(common_env)
+        combo_env["RUN_MODE"] = "combinatorics"
+        run_main(repo_dir, combo_env, combinatorics_dir)
+
     run_methodology(repo_dir, methodology_dir)
 
-    # Cross-batch sensitivity aggregation (keeps each batch untouched).
+    # Cross-batch random/combinatorics aggregation (keeps each batch untouched).
     base_outputs_dir = (repo_dir / args.outdir).resolve()
     history_dir = (base_outputs_dir / args.history_analysis_dir).resolve()
     history_df, triage_history_df = _collect_sensitivity_history(base_outputs_dir)
     if history_df.empty:
-        print("[Warning] No sensitivity results found across run_* folders; skipping history analysis.")
+        print("[Warning] No random/combinatorics results found across run_* folders; skipping history analysis.")
     else:
         history_dir.mkdir(parents=True, exist_ok=True)
         hist_csv = history_dir / "sensitivity_results_all_runs.csv"
@@ -667,16 +721,16 @@ def main():
             print(f"Saved: {p}")
 
     # Generate Results draft report in Word using merged scenarios when available.
-    results_df = _collect_results_frames(fixed_dir, random_dir)
+    results_df = _collect_results_frames(fixed_dir, random_dir, combinatorics_dir)
     report_df = history_df if not history_df.empty else results_df
     if report_df.empty:
         print("[Warning] No results.csv found; skipping Results draft report generation.")
     else:
         results_report_path = methodology_dir / "Results_Draft_MOFGPM.docx"
         wmax_col = "wmax" if "wmax" in report_df.columns else ("mw" if "mw" in report_df.columns else "wmax")
-        figures = _build_figure_map(fixed_dir, random_dir)
+        figures = _build_figure_map(fixed_dir, random_dir, combinatorics_dir)
         if history_dir.exists():
-            figures.update(_build_history_figure_map(history_dir))
+            figures.update(_build_history_figure_map(history_dir, start_index=len(figures) + 1))
 
         scenario_col = "scenario_key" if "scenario_key" in report_df.columns else "scenario"
         baseline_staff = {

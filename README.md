@@ -28,9 +28,9 @@ pdflatex --version
 
 ## Files
 
-- `main.py`: optimization and sensitivity workflow (GA + MOFGPM).
+- `main.py`: optimization workflow (GA + MOFGPM) with `fixed`, `random`, and `combinatorics` modes.
 - `methdology.py`: generates Word/LaTeX methodology outputs.
-- `run_all_pipeline.py`: one-command runner for fixed + sensitivity + methodology + merged analysis outputs.
+- `run_all_pipeline.py`: one-command runner for fixed + sensitivity + combinatorics + methodology + merged analysis outputs.
 - `results_report.py`: Word draft generator for Results section from produced outputs.
 - `requirements.txt`: Python dependency list.
 
@@ -56,7 +56,7 @@ Run:
 python main.py
 ```
 
-This runs the MOFGPM + GA workflow (baseline or random sensitivity mode based on environment settings) and produces summary tables/plots.
+This runs the MOFGPM + GA workflow (`fixed`, `random`, or `combinatorics` mode based on environment settings) and produces summary tables/plots.
 
 ## One-Command Full Pipeline
 
@@ -66,6 +66,14 @@ Run everything (fixed + sensitivity + methodology):
 python run_all_pipeline.py --install-deps --modes both
 ```
 
+Run combinatorics only (no fixed or random run):
+
+```powershell
+python run_all_pipeline.py --modes combinatorics
+```
+
+`--modes combination` and `--modes cobination` are accepted aliases.
+
 ### Output folder organization
 
 ```text
@@ -73,6 +81,7 @@ outputs/
   run_<timestamp>/
     fixed/
     sensitivity/
+    combinatorics/
     methodology/
   analysis/
     sensitivity_history/
@@ -82,12 +91,14 @@ outputs/
   - Fixed staffing (baseline) run outputs.
 - `outputs/run_<timestamp>/sensitivity/`
   - Random staffing samples for sensitivity analysis.
+- `outputs/run_<timestamp>/combinatorics/`
+  - Exhaustive staffing combinations (default: 960 combinations using Doctor 1..6, Nurse 1..8, Assistant 1..10, Specialist 1..2).
 - `outputs/run_<timestamp>/methodology/`
   - Methodology files and results draft report.
 - `outputs/analysis/sensitivity_history/`
-  - Merged cross-run sensitivity tables and plots.
+  - Merged cross-run random/combinatorics tables and plots.
 
-### Typical files in `fixed/` and `sensitivity/`
+### Typical files in `fixed/`, `sensitivity/`, and `combinatorics/`
 
 - `settings.json`
 - `results.csv`
@@ -131,6 +142,7 @@ Baseline-only helper (when `T_MAX_DAY <= 1440`):
 ### `results.csv` (sample-level summary)
 
 - `scenario`: fuzzy scenario solved (`optimistic`, `expected`, `pessimistic`).
+- `run_mode`: mode used for the record (`fixed`, `random`, `combinatorics`).
 - `sample_id`: staffing sample index in that run.
 - `Doctor`, `Nurse`, `Assistant`, `Specialist`: staffing levels for the sample.
 - `wmax`: wait tolerance used in memberships.
@@ -144,7 +156,7 @@ Baseline-only helper (when `T_MAX_DAY <= 1440`):
 
 ### `triage_waits_by_sample.csv` (patient-level waits)
 
-- `scenario`, `sample_id`, `patient`, `triage`
+- `scenario`, `run_mode`, `sample_id`, `patient`, `triage`
 - `first_wait`: arrival to first provider wait.
 - `early_wait_j_le_4`: cumulative early-task waiting (`j <= 4` tasks).
 - `schedule_complete`: whether required early tasks were scheduled.
@@ -152,7 +164,7 @@ Baseline-only helper (when `T_MAX_DAY <= 1440`):
 
 ### `schedule_by_sample.csv` (task-level schedule)
 
-- `scenario`, `sample_id`, `patient`, `triage`, `activity`, `task_j`
+- `scenario`, `run_mode`, `sample_id`, `patient`, `triage`, `activity`, `task_j`
 - `start`, `end`, `duration`
 - `required_resources`: comma-separated required resources.
 - `req_Doctor`, `req_Nurse`, `req_Assistant`, `req_Specialist`: binary resource requirements.
@@ -163,13 +175,15 @@ Baseline-only helper (when `T_MAX_DAY <= 1440`):
 Includes `results.csv` columns plus run metadata, such as:
 
 - `run_tag`, `run_dir`
+- `run_mode`, `history_source_folder`
 - `configured_num_patients`, `t_max_day`, `n_samples_per_level`
 - `fuzzy_scenario`, `goal_wait`, `max_wait`, `goal_cost`, `max_cost`
+- `combo_expected_total`
 - `scenario_key`: operational signature used for merged grouping
 
 ## Figure Interpretation Guide
 
-### Per-run figures (`fixed/` and `sensitivity/`)
+### Per-run figures (`fixed/`, `sensitivity/`, and `combinatorics/`)
 
 - `plot_cost_wait_scatter_lambda.png`
   - Use first to screen candidates.
@@ -216,4 +230,10 @@ Includes `results.csv` columns plus run metadata, such as:
 
 ```powershell
 python run_all_pipeline.py --modes both --fuzzy-scenario expected --num-patients 36 --force-num-patients --data-seed 1951 --t-max-day 1440 --n-samples-per-level 25 --pop-size 200 --generations 100 --mut-rate 0.2 --ga-seed-base 202600 --goal-cost 650 --max-cost 22750 --goal-wait 50 --max-wait 200000 --triage-limit-1 0 --triage-limit-2 30 --triage-limit-3 240 --triage-limit-4 720 --triage-limit-5 inf --triage-penalty 1000 --infeas-base-penalty 1000000 --exp-center median --fixed-doctor 3 --fixed-nurse 3 --fixed-assistant 6 --fixed-specialist 1 --n-staff-samples 25 --bound-doctor-lo 1 --bound-doctor-hi 6 --bound-nurse-lo 1 --bound-nurse-hi 8 --bound-assistant-lo 1 --bound-assistant-hi 10 --bound-specialist-lo 0 --bound-specialist-hi 2
+```
+
+Combinatorics command (default 960 combinations):
+
+```powershell
+python run_all_pipeline.py --modes combinatorics --fuzzy-scenario expected --num-patients 36 --force-num-patients --combo-bound-doctor-lo 1 --combo-bound-doctor-hi 6 --combo-bound-nurse-lo 1 --combo-bound-nurse-hi 8 --combo-bound-assistant-lo 1 --combo-bound-assistant-hi 10 --combo-bound-specialist-lo 1 --combo-bound-specialist-hi 2 --combo-expected-total 960
 ```
