@@ -1,6 +1,14 @@
 {
   "run_dir": "C:\\Users\\LEONA\\Documents\\GitHub\\MOFGPM\\results\\run_20260228_091617",
   "ga_subdir": "combinatorics",
+  "baseline_ga_subdir": "fixed",
+  "baseline_staff": {
+    "Doctor": 3,
+    "Nurse": 3,
+    "Assistant": 6,
+    "Specialist": 1
+  },
+  "baseline_outdir": "C:\\Users\\LEONA\\Documents\\GitHub\\MOFGPM\\results\\result_baseline",
   "flexsim_file": "C:\\Users\\LEONA\\Documents\\GitHub\\MOFGPM\\results\\Flexsim\\10_replicas.xlsx",
   "flexsim_sheet": "Raw Data",
   "horizon_minutes": 1440.0,

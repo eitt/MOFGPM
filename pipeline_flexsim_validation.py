@@ -19,6 +19,12 @@ from matplotlib.lines import Line2D
 
 
 RESOURCE_COLS = ["Doctor", "Nurse", "Assistant", "Specialist"]
+DEFAULT_BASELINE_STAFF = {
+    "Doctor": 3,
+    "Nurse": 3,
+    "Assistant": 6,
+    "Specialist": 1,
+}
 
 
 def _save_fig(fig, out_path: Path, *, use_tight_layout: bool = True) -> None:
@@ -252,30 +258,51 @@ def _load_flexsim_exports(flexsim_file: Path, sheet_name: str | None = None) -> 
     return fs, rep_cols, sheet
 
 
-def _extract_baseline_metrics(run_dir: Path, horizon_fallback: float = 1440.0) -> tuple[dict, pd.DataFrame]:
+def _extract_baseline_metrics(
+    run_dir: Path,
+    *,
+    ga_subdir: str = "fixed",
+    baseline_staff: dict[str, int] | None = None,
+    horizon_fallback: float = 1440.0,
+) -> tuple[dict, pd.DataFrame]:
     """
-    Extract baseline (fixed mode) scheduling metrics to test 24h feasibility.
+    Extract baseline scheduling metrics for a specific staffing tuple to test 24h feasibility.
     """
+    staff = dict(DEFAULT_BASELINE_STAFF)
+    if baseline_staff:
+        staff.update({k: int(v) for k, v in baseline_staff.items() if k in RESOURCE_COLS})
+
     try:
-        res_f, sch_f, tri_f, set_f, horizon_f = _load_ga_exports(run_dir, "fixed")
+        res_f, sch_f, tri_f, set_f, horizon_f = _load_ga_exports(run_dir, ga_subdir)
     except Exception:
         return {}, pd.DataFrame()
 
     horizon = float(set_f.get("T_MAX_DAY", horizon_fallback if np.isfinite(horizon_fallback) else 1440.0))
     target_patients = int(set_f.get("NUM_PATIENTS", 36))
 
-    # Fixed mode is expected to be a single row/sample; keep robust fallback.
-    if not res_f.empty and "sample_id" in res_f.columns:
-        sid = int(pd.to_numeric(res_f["sample_id"], errors="coerce").dropna().min())
-        row = res_f.loc[pd.to_numeric(res_f["sample_id"], errors="coerce") == sid].iloc[0]
-    else:
-        sid = int(pd.to_numeric(sch_f["sample_id"], errors="coerce").dropna().min())
-        row = pd.Series(dtype=float)
+    cand = res_f.copy()
+    for r in RESOURCE_COLS:
+        cand = cand[pd.to_numeric(cand[r], errors="coerce") == int(staff[r])]
+
+    if cand.empty:
+        raise ValueError(
+            "Requested baseline staffing tuple not found in GA results: "
+            + ", ".join([f"{r}={int(staff[r])}" for r in RESOURCE_COLS])
+            + f" (source subdir: {ga_subdir})"
+        )
+
+    cand = cand.copy()
+    cand["feasible_priority"] = np.where(cand["feasible"], 0, 1)
+    cand = cand.sort_values(["feasible_priority", "lambda", "wait", "sample_id"], ascending=[True, False, True, True])
+    row = cand.iloc[0]
+    sid = int(pd.to_numeric(pd.Series([row.get("sample_id", np.nan)]), errors="coerce").iloc[0])
 
     p_all, missing_first_wait = _compute_ga_patient_waits(sch_f, tri_f, horizon=horizon)
     p = p_all[p_all["sample_id"] == sid].copy()
     if p.empty:
-        return {}, pd.DataFrame()
+        raise ValueError(
+            f"Baseline sample_id={sid} was found in results.csv but not in schedule/triage exports (source subdir: {ga_subdir})."
+        )
 
     n_total = int(p["patient"].nunique())
     n_served_24h = int((p["served_24h"]).sum())
@@ -303,6 +330,7 @@ def _extract_baseline_metrics(run_dir: Path, horizon_fallback: float = 1440.0) -
         "ga_wait_all_finished": float(row.get("wait", np.nan)),
         "ga_lambda_fixed_row": float(row.get("lambda", np.nan)),
         "ga_feasible_fixed_row": bool(row.get("feasible", False)),
+        "baseline_source_subdir": ga_subdir,
     }
     return out, p
 
@@ -1195,7 +1223,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
     results_dir = Path(args.results_dir).resolve()
     run_dir = Path(args.run_dir).resolve() if args.run_dir else _find_latest_run_dir(results_dir)
     out_dir = Path(args.outdir).resolve()
+    baseline_out_dir = Path(args.baseline_outdir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
+    baseline_out_dir.mkdir(parents=True, exist_ok=True)
     flexsim_file = Path(args.flexsim_file).resolve()
 
     results_df, schedule_df, triage_df, settings, horizon = _load_ga_exports(run_dir, args.ga_subdir)
@@ -1216,7 +1246,18 @@ def run_pipeline(args: argparse.Namespace) -> None:
     table1 = _build_table1(comp)
     table2 = _build_table2(comp)
     table3 = _build_table3(comp)
-    baseline_metrics, baseline_patient_df = _extract_baseline_metrics(run_dir, horizon_fallback=horizon)
+    baseline_staff = {
+        "Doctor": int(args.baseline_doctor),
+        "Nurse": int(args.baseline_nurse),
+        "Assistant": int(args.baseline_assistant),
+        "Specialist": int(args.baseline_specialist),
+    }
+    baseline_metrics, baseline_patient_df = _extract_baseline_metrics(
+        run_dir,
+        ga_subdir=args.baseline_ga_subdir,
+        baseline_staff=baseline_staff,
+        horizon_fallback=horizon,
+    )
     baseline_table = pd.DataFrame([baseline_metrics]) if baseline_metrics else pd.DataFrame()
 
     sensitivity_cols = [
@@ -1245,6 +1286,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     p_dataset = out_dir / "validation_matched_dataset_24h.csv"
     p_patient = out_dir / "ga_patient_level_waits_24h.csv"
     p_baseline_table = out_dir / "baseline_fixed_case_summary.csv"
+    p_baseline_table_dedicated = baseline_out_dir / "baseline_fixed_case_summary.csv"
     p_sensitivity_table = out_dir / "sensitivity_top_staffing_by_served24h.csv"
 
     table1.to_csv(p_table1, index=False)
@@ -1253,6 +1295,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     comp.to_csv(p_dataset, index=False)
     patient_df.to_csv(p_patient, index=False)
     baseline_table.to_csv(p_baseline_table, index=False)
+    baseline_table.to_csv(p_baseline_table_dedicated, index=False)
     sensitivity_table.to_csv(p_sensitivity_table, index=False)
 
     # Figures.
@@ -1283,10 +1326,13 @@ def run_pipeline(args: argparse.Namespace) -> None:
     metaA1["alt_text"] = "Detailed scenario-by-scenario chart where each row shows FlexSim mean with confidence interval and a GA scaled 24-hour marker."
     appendix_entries.append({"path": str(fA1), **metaA1})
 
+    p_baseline_figure_dedicated = baseline_out_dir / "figB1_baseline_completion_profile.png"
     if not baseline_patient_df.empty and baseline_metrics:
         fB1 = out_dir / "figB1_baseline_completion_profile.png"
         mB1 = _plot_baseline_completion_profile(baseline_patient_df, baseline_metrics, fB1)
         baseline_entries.append({"path": str(fB1), **mB1})
+        if p_baseline_figure_dedicated.resolve() != fB1.resolve():
+            _plot_baseline_completion_profile(baseline_patient_df, baseline_metrics, p_baseline_figure_dedicated)
 
     # Sensitivity figures focused on attended-patient patterns by staffing combinations.
     fS1 = out_dir / "figS1_ga_served24h_by_staff_grid.png"
@@ -1402,6 +1448,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
     summary = {
         "run_dir": str(run_dir),
         "ga_subdir": args.ga_subdir,
+        "baseline_ga_subdir": args.baseline_ga_subdir,
+        "baseline_staff": baseline_staff,
+        "baseline_outdir": str(baseline_out_dir),
         "flexsim_file": str(flexsim_file),
         "flexsim_sheet": fs_sheet,
         "horizon_minutes": float(horizon),
@@ -1421,6 +1470,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
     print(f"Run folder used: {run_dir}")
     print(f"GA source folder: {run_dir / args.ga_subdir}")
+    print(f"Baseline GA source folder: {run_dir / args.baseline_ga_subdir}")
+    print("Baseline staffing tuple: " + ", ".join([f"{k}={v}" for k, v in baseline_staff.items()]))
+    print(f"Baseline dedicated output folder: {baseline_out_dir}")
     print(f"FlexSim file used: {flexsim_file} (sheet: {fs_sheet})")
     print(f"Saved: {p_table1}")
     print(f"Saved: {p_table2}")
@@ -1428,9 +1480,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"Saved: {p_dataset}")
     print(f"Saved: {p_patient}")
     print(f"Saved: {p_baseline_table}")
+    print(f"Saved: {p_baseline_table_dedicated}")
     print(f"Saved: {p_sensitivity_table}")
     for e in baseline_entries:
         print(f"Saved: {e['path']}")
+    if p_baseline_figure_dedicated.exists():
+        print(f"Saved: {p_baseline_figure_dedicated}")
     for e in sensitivity_entries:
         print(f"Saved: {e['path']}")
     for e in figure_entries:
@@ -1473,6 +1528,40 @@ def parse_args() -> argparse.Namespace:
         "--outdir",
         default="results/validation_flexsim_24h",
         help="Output directory for tables, figures, alt text, and results section.",
+    )
+    parser.add_argument(
+        "--baseline-outdir",
+        default="results/result_baseline",
+        help="Dedicated output directory for baseline-only artifacts.",
+    )
+    parser.add_argument(
+        "--baseline-ga-subdir",
+        default="fixed",
+        help="GA subfolder used for baseline extraction (inside run_dir).",
+    )
+    parser.add_argument(
+        "--baseline-doctor",
+        type=int,
+        default=DEFAULT_BASELINE_STAFF["Doctor"],
+        help="Baseline Doctor count used to select baseline scenario.",
+    )
+    parser.add_argument(
+        "--baseline-nurse",
+        type=int,
+        default=DEFAULT_BASELINE_STAFF["Nurse"],
+        help="Baseline Nurse count used to select baseline scenario.",
+    )
+    parser.add_argument(
+        "--baseline-assistant",
+        type=int,
+        default=DEFAULT_BASELINE_STAFF["Assistant"],
+        help="Baseline Assistant count used to select baseline scenario.",
+    )
+    parser.add_argument(
+        "--baseline-specialist",
+        type=int,
+        default=DEFAULT_BASELINE_STAFF["Specialist"],
+        help="Baseline Specialist count used to select baseline scenario.",
     )
     parser.add_argument(
         "--mismatch-threshold-pct",

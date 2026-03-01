@@ -56,6 +56,9 @@ results/
       settings.json
   Flexsim/
     10_replicas.xlsx
+  result_baseline/
+    baseline_fixed_case_summary.csv
+    figB1_baseline_completion_profile.png
   validation_flexsim_24h/
     table1_cohort_capacity_reconciliation.csv
     table2_kpi_comparison_served_only.csv
@@ -84,7 +87,7 @@ results/
 Notes:
 
 - `run_all_pipeline.py` writes under `outputs/` by default.
-- `pipeline_flexsim_validation.py` reads GA exports from `results/run_*` and writes validation outputs to `results/validation_flexsim_24h` by default.
+- `pipeline_flexsim_validation.py` reads GA exports from `results/run_*`, writes full validation outputs to `results/validation_flexsim_24h`, and writes baseline-only artifacts to `results/result_baseline` by default.
 
 ## Run Commands
 
@@ -115,7 +118,7 @@ python pipeline_flexsim_validation.py
 Typical explicit command:
 
 ```powershell
-python pipeline_flexsim_validation.py --results-dir results --ga-subdir combinatorics --flexsim-file results/Flexsim/10_replicas.xlsx --outdir results/validation_flexsim_24h --mismatch-threshold-pct 20
+python pipeline_flexsim_validation.py --results-dir results --ga-subdir combinatorics --flexsim-file results/Flexsim/10_replicas.xlsx --outdir results/validation_flexsim_24h --baseline-outdir results/result_baseline --baseline-ga-subdir fixed --baseline-doctor 3 --baseline-nurse 3 --baseline-assistant 6 --baseline-specialist 1 --mismatch-threshold-pct 20
 ```
 
 ## Validation Function Map (`pipeline_flexsim_validation.py`)
@@ -125,6 +128,7 @@ python pipeline_flexsim_validation.py --results-dir results --ga-subdir combinat
 - `_select_ga_rows_by_staff`: keeps one GA row per staffing combination (feasible first, then highest lambda, then lowest wait).
 - `_compute_ga_patient_waits`: reconstructs patient-level wait and served-within-24h flag from schedule + triage waits.
 - `_aggregate_ga_sample_metrics`: computes GA totals/averages for all finished and served-within-24h cohorts.
+- `_extract_baseline_metrics`: extracts baseline feasibility metrics for a selected staffing tuple (default: Doctor=3, Nurse=3, Assistant=6, Specialist=1) from the baseline GA subfolder (default: `fixed`).
 - `_build_comparison_dataset`: merges GA and FlexSim and computes comparison metrics and mismatch flags.
 - `_build_table1`, `_build_table2`, `_build_table3`: exports reconciliation, KPI, and statistical-check tables.
 - `_plot_*`: generates validation figures and appendix figures.
@@ -191,7 +195,7 @@ Sign conventions:
 ### Baseline and staffing heatmaps
 
 - `figB1_baseline_completion_profile.png`
-  - Patient completion times in baseline fixed case.
+  - Patient completion times in the selected baseline staffing case (default tuple: 3,3,6,1).
   - Checks if completions remain within 24h horizon.
 
 - `figS1_ga_served24h_by_staff_grid.png`
@@ -215,7 +219,7 @@ All validation figures are now generated without figure titles to simplify manus
 - `table3_statistical_check.csv`: z-score consistency check.
 - `validation_matched_dataset_24h.csv`: joined row-level dataset used for all comparisons.
 - `ga_patient_level_waits_24h.csv`: patient-level GA waits used to build cohort aggregates.
-- `baseline_fixed_case_summary.csv`: baseline 24h feasibility summary.
+- `baseline_fixed_case_summary.csv`: baseline 24h feasibility summary (also written to `results/result_baseline/`).
 - `sensitivity_top_staffing_by_served24h.csv`: top staffing combinations by GA served volume.
 - `validation_summary.json`: concise machine-readable summary of run-level outcomes.
 
@@ -246,5 +250,4 @@ All validation figures are now generated without figure titles to simplify manus
 2. Read `fig1_aggregated_ratio_view.png` and `fig2_aggregated_kpi_summary.png` for top-level agreement.
 3. Use `figS1`, `figS2`, `figS3` to localize agreement/disagreement by staffing combination.
 4. Use `appendix_figA1_scenario_ci_vs_ga_scaled.png` and `table3_statistical_check.csv` for scenario-level statistical checks.
-5. Use baseline outputs (`figB1_baseline_completion_profile.png`, `baseline_fixed_case_summary.csv`) for 24h feasibility context.
-
+5. Use baseline outputs (`results/result_baseline/figB1_baseline_completion_profile.png`, `results/result_baseline/baseline_fixed_case_summary.csv`) for 24h feasibility context.
