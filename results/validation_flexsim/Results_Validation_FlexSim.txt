@@ -1,0 +1,9 @@
+8.1 External validation with FlexSim
+
+External validation was conducted by matching MOFGPM combinatorics scenarios and FlexSim scenarios using identical staffing tuples (Doctor, Nurse, Assistant, Specialist). The comparison used transformed performance metrics to ensure comparability between engines.
+Specifically, MOFGPM and FlexSim outputs were converted to per-patient values and then normalized using a baseline-index transformation relative to a shared reference scenario. This baseline-anchored approach follows the validation logic defined in the methodology.
+A total of 144 matched scenarios were validated. Per-patient Pearson correlation was 0.867, and Spearman rank correlation was 0.858, indicating that both models provide consistent directional tradeoff information across staffing alternatives.
+At the normalized scale, baseline-index MAPE was 28.76%, which quantifies residual cross-model deviation after transformation.
+The configured baseline staffing was outside the shared combinatorics design; therefore, a nearest shared proxy baseline was used for normalization and agreement testing.
+Configured baseline: Doctor=3, Nurse=3, Assistant=6, Specialist=1. Proxy baseline used: Doctor=3, Nurse=3, Assistant=2, Specialist=1.
+Overall, the transformed comparisons support the validity of the MOFGPM model for relative staffing decisions, while disagreement diagnostics identify specific regions that require calibration of simulation assumptions.

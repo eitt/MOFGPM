@@ -1,0 +1,15 @@
+Figure: plot_validation_per_patient_scatter.png
+Caption: Figure 1. MOFGPM vs FlexSim per-patient metric (lambda color encoding).
+Alt text: Scatter of 144 matched staffing scenarios comparing MOFGPM and FlexSim per-patient values, with a positive trend, regression line, and y equals x reference.
+
+Figure: plot_validation_baseline_index_scatter.png
+Caption: Figure 2. Baseline-index comparison (per-patient transformed values).
+Alt text: Scatter of baseline-normalized per-patient performance for MOFGPM and FlexSim, colored by total staff, with y equals x line and positive rank alignment.
+
+Figure: plot_validation_gap_heatmap_doctor_nurse.png
+Caption: Figure 3. Mean absolute agreement gap by Doctor-Nurse levels.
+Alt text: Heatmap showing where model-to-FlexSim normalized gap is smaller or larger across doctor and nurse staffing combinations.
+
+Figure: plot_validation_bland_altman.png
+Caption: Figure 4. Bland-Altman agreement plot for baseline-index metrics.
+Alt text: Agreement plot with baseline-index mean on x-axis and MOFGPM minus FlexSim difference on y-axis, including mean bias and limits of agreement lines.

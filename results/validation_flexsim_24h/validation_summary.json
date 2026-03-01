@@ -1,0 +1,18 @@
+{
+  "run_dir": "C:\\Users\\LEONA\\Documents\\GitHub\\MOFGPM\\results\\run_20260228_091617",
+  "ga_subdir": "combinatorics",
+  "flexsim_file": "C:\\Users\\LEONA\\Documents\\GitHub\\MOFGPM\\results\\Flexsim\\10_replicas.xlsx",
+  "flexsim_sheet": "Raw Data",
+  "horizon_minutes": 1440.0,
+  "configured_num_patients": 36,
+  "matched_scenarios": 144,
+  "mean_ga_total_patients_all_finished": 35.0,
+  "mean_ga_served_24h": 12.770833333333334,
+  "mean_fs_served_24h": 17.2875,
+  "capacity_horizon_mismatch_count": 113,
+  "z_consistent_pct": 0.6944444444444444,
+  "baseline_target_patients_24h": 36,
+  "baseline_generated_patients_ga": 35,
+  "baseline_served_24h_ga": 11,
+  "baseline_schedule_feasible_24h_target": false
+}

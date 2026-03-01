@@ -1,0 +1,18 @@
+8.1 External validation with FlexSim (served-within-24h reconciliation)
+
+GA all-finished metrics are not directly comparable to FlexSim 24h outputs.
+Validation is performed on the served within 24h cohort to align denominators and avoid the Dylan vs Laura discrepancy.
+KPI definition: aggregate waiting/attention metric computed only on patients served within 24h.
+FlexSim KPI uses FS_mean (average of 10 replications) and FS_ci95 = 1.96*FS_std/sqrt(10).
+GA comparable KPI uses GA_scaled_total_24h = GA_avg_wait_per_served * FlexSim Patient.
+Main figures are aggregated for readability; detailed scenario-by-scenario comparison is provided in Appendix Figure A1.
+
+Matched staffing scenarios: 144.
+Observed GA total patients per sample (all-finished cohort): 35.00.
+Average GA served within 24h: 12.77 patients.
+Average FlexSim served within 24h (Patient): 17.29 patients.
+Capacity/horizon mismatch flags: 113 scenarios.
+Scenarios with |z|<2 (GA_scaled_total_24h vs FlexSim mean): 0.7%.
+
+Primary comparison uses GA_avg_wait_per_served vs FS_avg_wait_per_served.
+Secondary comparison uses GA_scaled_total_24h vs FS_mean.

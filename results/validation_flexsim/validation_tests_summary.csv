@@ -1,0 +1,15 @@
+test,statistic,p_value,notes
+Per-patient correlation,0.8670134123334025,8.469149292140625e-45,
+Per-patient rank correlation,0.8584806612241062,5.109440980079741e-43,
+Baseline-index correlation,0.8670134123334023,8.469149292141627e-45,
+Baseline-index rank correlation,0.8584806612241062,5.109440980079741e-43,
+Rank concordance (Kendall tau),0.6590795980140289,1.233453101067567e-31,
+Lambda vs FlexSim per-patient (Spearman),-0.8578433399986485,6.865384268142003e-43,
+Linear fit (per-patient): slope,0.06639196871304012,8.469149292141117e-45,R2=0.7517
+Baseline-index MAPE (%),28.756976735741613,,Lower is better
+Baseline-index MAE,0.2574183859651014,,Lower is better
+Baseline-index RMSE,0.30948290546181856,,Lower is better
+Scenarios within +/-0.10 baseline-index gap (%),22.916666666666664,,Higher is better
+Wilcoxon signed-rank on baseline-index gap,881.0,8.055110820465543e-18,H0: median gap = 0
+Improvement-direction agreement (%),87.5,,
+Cohen kappa (improvement direction),0.6795252225519288,,

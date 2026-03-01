@@ -1,0 +1,4 @@
+baseline_item,in_shared_space,model_wait_per_patient,flexsim_mean_per_patient,notes
+"Configured baseline target (3, 3, 6, 1)",False,,,Reference target from methodology/fixed settings
+Fixed-mode MOFGPM baseline run,False,1207.8607535672386,,Observed baseline run from fixed/results.csv
+"Shared reference used (3, 3, 2, 1)",True,1710.230881770066,107.97316926860945,Nearest shared proxy baseline (normalized distance=4.000)

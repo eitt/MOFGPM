@@ -1,0 +1,2 @@
+sample_id,Doctor,Nurse,Assistant,Specialist,target_patients_24h,generated_patients_ga,served_24h_ga,served_24h_rate,served_share_generated_pct,served_share_target_pct,backlog_vs_generated,backlog_vs_target,completion_time_max_min,horizon_min,schedule_feasible_24h_target,missing_first_wait_rows,ga_wait_all_finished,ga_lambda_fixed_row,ga_feasible_fixed_row
+1,3,3,6,1,36,35,11,0.4583333333333333,31.428571428571427,30.555555555555557,24,25,3393.009616215687,1440.0,False,0,43482.98712842059,0.782780759547784,True

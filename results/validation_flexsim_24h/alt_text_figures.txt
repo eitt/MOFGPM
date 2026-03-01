@@ -1,0 +1,35 @@
+Figure: figB1_baseline_completion_profile.png
+Caption: Figure B1. Baseline completion profile under fixed staffing.
+Alt text: Scatter plot of patient completion times in the fixed baseline case, showing which patients finish within 24 hours and which spill beyond the daily horizon.
+
+Figure: figS1_ga_served24h_by_staff_grid.png
+Caption: Figure S1. GA served patients within 24h by staffing combination
+Alt text: Heatmap grid by Assistant and Specialist levels; each panel shows Doctor versus Nurse combinations with annotated values for ga served patients within 24h.
+
+Figure: figS2_flexsim_patient_by_staff_grid.png
+Caption: Figure S2. FlexSim average attended patients/day by staffing combination
+Alt text: Heatmap grid by Assistant and Specialist levels; each panel shows Doctor versus Nurse combinations with annotated values for flexsim avg attended patients/day.
+
+Figure: figS3_gap_flexsim_minus_ga_by_staff_grid.png
+Caption: Figure S3. Gap in attended patients/day (FlexSim - GA served_24h)
+Alt text: Heatmap grid by Assistant and Specialist levels; each panel shows Doctor versus Nurse combinations with annotated values for patient gap (flexsim - ga).
+
+Figure: fig1_aggregated_ratio_view.png
+Caption: Figure 1. Aggregated ratio view of GA_scaled_total_24h versus FlexSim mean (10 replications).
+Alt text: Left panel shows scenario-level ratio values with blue points for non-mismatch and red points for capacity-horizon mismatch; point size reflects FlexSim served patients. Right panel shows decile-averaged ratio with 95% confidence intervals and mismatch-rate bars.
+
+Figure: fig2_aggregated_kpi_summary.png
+Caption: Figure 2. Aggregated KPI summary: overall levels and ratio distribution.
+Alt text: Left panel compares overall mean aggregate KPI for FlexSim and GA scaled 24-hour values with confidence intervals. Right panel shows the distribution of ratio GA_scaled_total_24h divided by FlexSim mean for mismatch and non-mismatch groups, with parity at 1.
+
+Figure: fig3_per_served_patient_kpi_bar.png
+Caption: Figure 3. Mean per-served-patient KPI (GA vs FlexSim).
+Alt text: Two-bar chart comparing mean served-only per-patient KPI for GA and FlexSim, with error bars showing scenario variability.
+
+Figure: fig4_served_rate_per_hour_bar.png
+Caption: Figure 4. Mean served rate per hour (GA vs FlexSim).
+Alt text: Two-bar chart comparing average served patients per hour in GA and FlexSim under the 24-hour served-only cohort definition.
+
+Figure: appendix_figA1_scenario_ci_vs_ga_scaled.png
+Caption: Appendix Figure A1. Scenario-level FlexSim mean +/-95% CI with GA scaled 24h points.
+Alt text: Detailed scenario-by-scenario chart where each row shows FlexSim mean with confidence interval and a GA scaled 24-hour marker.
