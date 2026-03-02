@@ -1,6 +1,6 @@
 Figure: figB1_baseline_completion_profile.png
-Caption: Figure B1. Baseline completion profile under fixed staffing.
-Alt text: Scatter plot of patient completion times in the fixed baseline case, showing which patients finish within 24 hours and which spill beyond the daily horizon.
+Caption: Figure B1. Baseline completion profiles (one column, two rows) for Assistant=1 and Assistant=2.
+Alt text: Two-row scatter plot of baseline patient completion times, with the top row for Assistant equals 1 and the bottom row for Assistant equals 2, showing within-24h versus after-24h completions against the 24-hour horizon line.
 
 Figure: figS1_ga_served24h_by_staff_grid.png
 Caption: Figure S1. GA served patients within 24h by staffing combination

@@ -1,13 +1,29 @@
 {
   "run_dir": "C:\\Users\\LEONA\\Documents\\GitHub\\MOFGPM\\results\\run_20260228_091617",
   "ga_subdir": "combinatorics",
-  "baseline_ga_subdir": "fixed",
-  "baseline_staff": {
+  "baseline_ga_subdir": "combinatorics",
+  "baseline_staff_common": {
     "Doctor": 3,
     "Nurse": 3,
-    "Assistant": 6,
     "Specialist": 1
   },
+  "baseline_assistants": [
+    1,
+    2
+  ],
+  "baseline_replicates_requested": 10,
+  "baseline_replicate_columns_used": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10"
+  ],
   "baseline_outdir": "C:\\Users\\LEONA\\Documents\\GitHub\\MOFGPM\\results\\result_baseline",
   "flexsim_file": "C:\\Users\\LEONA\\Documents\\GitHub\\MOFGPM\\results\\Flexsim\\10_replicas.xlsx",
   "flexsim_sheet": "Raw Data",
@@ -21,6 +37,6 @@
   "z_consistent_pct": 0.6944444444444444,
   "baseline_target_patients_24h": 36,
   "baseline_generated_patients_ga": 35,
-  "baseline_served_24h_ga": 11,
+  "baseline_served_24h_ga": 6,
   "baseline_schedule_feasible_24h_target": false
 }

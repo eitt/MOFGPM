@@ -25,6 +25,8 @@ DEFAULT_BASELINE_STAFF = {
     "Assistant": 6,
     "Specialist": 1,
 }
+DEFAULT_BASELINE_ASSISTANTS = [1, 2]
+DEFAULT_BASELINE_REPLICATES = 10
 
 
 def _save_fig(fig, out_path: Path, *, use_tight_layout: bool = True) -> None:
@@ -221,6 +223,16 @@ def _detect_replication_columns(df: pd.DataFrame) -> list[str]:
     return candidates
 
 
+def _sort_replication_columns(rep_cols: list[str]) -> list[str]:
+    def _key(c: str) -> tuple[int, int | str]:
+        m = re.search(r"(\d+)", str(c))
+        if m:
+            return (0, int(m.group(1)))
+        return (1, str(c))
+
+    return sorted(rep_cols, key=_key)
+
+
 def _load_flexsim_exports(flexsim_file: Path, sheet_name: str | None = None) -> tuple[pd.DataFrame, list[str], str]:
     if not flexsim_file.exists():
         raise FileNotFoundError(f"FlexSim file not found: {flexsim_file}")
@@ -239,7 +251,7 @@ def _load_flexsim_exports(flexsim_file: Path, sheet_name: str | None = None) -> 
     if miss:
         raise ValueError(f"FlexSim sheet '{sheet}' missing required columns: {miss}")
 
-    rep_cols = _detect_replication_columns(fs)
+    rep_cols = _sort_replication_columns(_detect_replication_columns(fs))
     if not rep_cols:
         raise ValueError("FlexSim export must include replication columns (1..10 or rep*).")
 
@@ -335,45 +347,164 @@ def _extract_baseline_metrics(
     return out, p
 
 
+def _build_baseline_flexsim_replications(
+    fs_df: pd.DataFrame,
+    rep_cols: list[str],
+    *,
+    baseline_doctor: int,
+    baseline_nurse: int,
+    baseline_specialist: int,
+    baseline_assistants: list[int],
+    replications_per_baseline: int,
+) -> tuple[pd.DataFrame, list[str]]:
+    rep_cols_sorted = _sort_replication_columns(rep_cols)
+    n_req = int(replications_per_baseline)
+    if n_req <= 0:
+        raise ValueError("replications_per_baseline must be positive.")
+    if len(rep_cols_sorted) < n_req:
+        raise ValueError(
+            f"FlexSim workbook has {len(rep_cols_sorted)} replication columns, but {n_req} were requested."
+        )
+    rep_use = rep_cols_sorted[:n_req]
+
+    rows: list[dict] = []
+    for asst in baseline_assistants:
+        sub = fs_df[
+            (pd.to_numeric(fs_df["Doctor"], errors="coerce") == int(baseline_doctor))
+            & (pd.to_numeric(fs_df["Nurse"], errors="coerce") == int(baseline_nurse))
+            & (pd.to_numeric(fs_df["Assistant"], errors="coerce") == int(asst))
+            & (pd.to_numeric(fs_df["Specialist"], errors="coerce") == int(baseline_specialist))
+        ].copy()
+        if sub.empty:
+            raise ValueError(
+                "Requested FlexSim baseline tuple not found: "
+                + f"Doctor={int(baseline_doctor)}, Nurse={int(baseline_nurse)}, Assistant={int(asst)}, Specialist={int(baseline_specialist)}"
+            )
+        row = sub.iloc[0]
+        for rep_idx, col in enumerate(rep_use, start=1):
+            rows.append(
+                {
+                    "Scenario": row.get("Scenario"),
+                    "Doctor": int(row["Doctor"]),
+                    "Nurse": int(row["Nurse"]),
+                    "Assistant": int(row["Assistant"]),
+                    "Specialist": int(row["Specialist"]),
+                    "Patient": float(row["Patient"]) if pd.notna(row["Patient"]) else np.nan,
+                    "replicate_index": int(rep_idx),
+                    "replicate_column": str(col),
+                    "FS_wait_total": float(row[col]) if pd.notna(row[col]) else np.nan,
+                }
+            )
+
+    out = pd.DataFrame(rows)
+    return out, rep_use
+
+
 def _plot_baseline_completion_profile(
-    baseline_patient_df: pd.DataFrame,
-    baseline_metrics: dict,
+    baseline_profiles: list[dict],
     out_path: Path,
 ) -> dict[str, str]:
-    p = baseline_patient_df.copy()
-    p = p.sort_values("last_end", ascending=True).reset_index(drop=True)
-    p["idx"] = np.arange(1, len(p) + 1)
-    horizon = float(baseline_metrics.get("horizon_min", 1440.0))
-    served = p["served_24h"].astype(bool)
+    if not baseline_profiles:
+        raise ValueError("No baseline profiles available to plot.")
 
-    fig, ax = plt.subplots(figsize=(10.5, 5.4))
-    ax.scatter(
-        p.loc[served, "idx"],
-        p.loc[served, "last_end"],
-        c="#4C78A8",
-        s=35,
-        label="Served within 24h",
-        edgecolors="#202020",
-        linewidths=0.25,
-    )
-    ax.scatter(
-        p.loc[~served, "idx"],
-        p.loc[~served, "last_end"],
-        c="#E45756",
-        s=35,
-        label="Completed after 24h",
-        edgecolors="#202020",
-        linewidths=0.25,
-    )
-    ax.axhline(horizon, color="#555555", linestyle="--", linewidth=1.2, label=f"24h horizon ({horizon:.0f} min)")
-    ax.set_xlabel("Patient index (sorted by completion time)")
-    ax.set_ylabel("Patient completion time (minutes)")
+    nrows = len(baseline_profiles)
+    fig, axes = plt.subplots(nrows, 1, figsize=(10.8, 4.5 * nrows), squeeze=False, sharex=False)
+    axes_flat = axes[:, 0]
+
+    for ax, profile in zip(axes_flat, baseline_profiles):
+        p = profile["patient_df"].copy()
+        p = p.sort_values("last_end", ascending=True).reset_index(drop=True)
+        p["idx"] = np.arange(1, len(p) + 1)
+        metrics = profile["metrics"]
+        assistant = int(metrics.get("Assistant", -1))
+        horizon = float(metrics.get("horizon_min", 1440.0))
+        served = p["served_24h"].astype(bool)
+
+        ax.scatter(
+            p.loc[served, "idx"],
+            p.loc[served, "last_end"],
+            c="#4C78A8",
+            s=28,
+            label="Served within 24h",
+            edgecolors="#202020",
+            linewidths=0.25,
+        )
+        ax.scatter(
+            p.loc[~served, "idx"],
+            p.loc[~served, "last_end"],
+            c="#E45756",
+            s=28,
+            label="Completed after 24h",
+            edgecolors="#202020",
+            linewidths=0.25,
+        )
+        ax.axhline(horizon, color="#555555", linestyle="--", linewidth=1.2, label=f"24h horizon ({horizon:.0f} min)")
+        ax.set_title(f"Assistant = {assistant}")
+        ax.set_xlabel("Patient index (sorted by completion time)")
+        ax.set_ylabel("Patient completion time (minutes)")
+        ax.legend(loc="best")
+
+    _save_fig(fig, out_path)
+    return {
+        "caption": "Figure B1. Baseline completion profiles (one column, two rows) for Assistant=1 and Assistant=2.",
+        "alt_text": "Two-row scatter plot of baseline patient completion times, with the top row for Assistant equals 1 and the bottom row for Assistant equals 2, showing within-24h versus after-24h completions against the 24-hour horizon line.",
+    }
+
+
+def _plot_baseline_flexsim_replication_scatter(
+    baseline_reps_df: pd.DataFrame,
+    out_path: Path,
+) -> dict[str, str]:
+    if baseline_reps_df.empty:
+        raise ValueError("Baseline replication DataFrame is empty.")
+
+    d = baseline_reps_df.copy()
+    d = d[d["FS_wait_total"].notna() & np.isfinite(pd.to_numeric(d["FS_wait_total"], errors="coerce"))].copy()
+    if d.empty:
+        raise ValueError("No finite baseline replication values available for plotting.")
+
+    markers = {1: "o", 2: "s"}
+    colors = {1: "#4C78A8", 2: "#F58518"}
+    assistants = sorted(pd.to_numeric(d["Assistant"], errors="coerce").dropna().astype(int).unique().tolist())
+
+    fig, ax = plt.subplots(figsize=(10.8, 5.0))
+    for asst in assistants:
+        sub = d[pd.to_numeric(d["Assistant"], errors="coerce") == int(asst)].copy()
+        x = pd.to_numeric(sub["replicate_index"], errors="coerce").to_numpy(dtype=float)
+        y = pd.to_numeric(sub["FS_wait_total"], errors="coerce").to_numpy(dtype=float)
+        marker = markers.get(int(asst), "^")
+        color = colors.get(int(asst), "#54A24B")
+        ax.scatter(
+            x,
+            y,
+            marker=marker,
+            c=color,
+            s=56,
+            alpha=0.90,
+            edgecolors="#202020",
+            linewidths=0.30,
+            label=f"Assistant={int(asst)} (marker={marker})",
+        )
+        mean_y = float(np.nanmean(y))
+        ax.hlines(
+            mean_y,
+            xmin=float(np.nanmin(x)) - 0.20,
+            xmax=float(np.nanmax(x)) + 0.20,
+            colors=color,
+            linestyles="--",
+            linewidth=1.1,
+        )
+
+    max_rep = int(pd.to_numeric(d["replicate_index"], errors="coerce").max())
+    ax.set_xticks(np.arange(1, max_rep + 1))
+    ax.set_xlabel("Replication index")
+    ax.set_ylabel("FlexSim total wait KPI")
     ax.legend(loc="best")
     _save_fig(fig, out_path)
 
     return {
-        "caption": "Figure B1. Baseline completion profile under fixed staffing.",
-        "alt_text": "Scatter plot of patient completion times in the fixed baseline case, showing which patients finish within 24 hours and which spill beyond the daily horizon.",
+        "caption": "Figure B2. Baseline FlexSim replications for Assistant=1 and Assistant=2 (10 replications each).",
+        "alt_text": "Scatter plot of baseline FlexSim replication values where circle markers indicate Assistant equals 1 and square markers indicate Assistant equals 2, with dashed mean lines per assistant group.",
     }
 
 
@@ -1227,6 +1358,18 @@ def run_pipeline(args: argparse.Namespace) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     baseline_out_dir.mkdir(parents=True, exist_ok=True)
     flexsim_file = Path(args.flexsim_file).resolve()
+    stale_baseline_paths = [
+        out_dir / "figB2_baseline_flexsim_replicates_scatter.png",
+        baseline_out_dir / "figB2_baseline_flexsim_replicates_scatter.png",
+        out_dir / "baseline_flexsim_replicates.csv",
+        baseline_out_dir / "baseline_flexsim_replicates.csv",
+    ]
+    for stale_path in stale_baseline_paths:
+        if stale_path.exists():
+            try:
+                stale_path.unlink()
+            except Exception:
+                pass
 
     results_df, schedule_df, triage_df, settings, horizon = _load_ga_exports(run_dir, args.ga_subdir)
     fs_df, rep_cols, fs_sheet = _load_flexsim_exports(flexsim_file, args.flexsim_sheet)
@@ -1246,19 +1389,92 @@ def run_pipeline(args: argparse.Namespace) -> None:
     table1 = _build_table1(comp)
     table2 = _build_table2(comp)
     table3 = _build_table3(comp)
-    baseline_staff = {
+    baseline_assistants = sorted({int(v) for v in (args.baseline_assistants or [args.baseline_assistant])})
+    if not baseline_assistants:
+        baseline_assistants = [int(args.baseline_assistant)]
+    baseline_staff_common = {
         "Doctor": int(args.baseline_doctor),
         "Nurse": int(args.baseline_nurse),
-        "Assistant": int(args.baseline_assistant),
         "Specialist": int(args.baseline_specialist),
     }
-    baseline_metrics, baseline_patient_df = _extract_baseline_metrics(
-        run_dir,
-        ga_subdir=args.baseline_ga_subdir,
-        baseline_staff=baseline_staff,
-        horizon_fallback=horizon,
+
+    baseline_metrics_rows: list[dict] = []
+    baseline_profiles: list[dict] = []
+    for assistant in baseline_assistants:
+        baseline_staff = {
+            "Doctor": int(args.baseline_doctor),
+            "Nurse": int(args.baseline_nurse),
+            "Assistant": int(assistant),
+            "Specialist": int(args.baseline_specialist),
+        }
+        baseline_metrics_i, baseline_patient_df_i = _extract_baseline_metrics(
+            run_dir,
+            ga_subdir=args.baseline_ga_subdir,
+            baseline_staff=baseline_staff,
+            horizon_fallback=horizon,
+        )
+        if baseline_metrics_i:
+            baseline_metrics_rows.append(baseline_metrics_i)
+        if not baseline_patient_df_i.empty:
+            baseline_profiles.append({"metrics": baseline_metrics_i, "patient_df": baseline_patient_df_i})
+
+    baseline_metrics = baseline_metrics_rows[0] if baseline_metrics_rows else {}
+
+    baseline_reps_df, baseline_rep_cols_used = _build_baseline_flexsim_replications(
+        fs_df,
+        rep_cols,
+        baseline_doctor=int(args.baseline_doctor),
+        baseline_nurse=int(args.baseline_nurse),
+        baseline_specialist=int(args.baseline_specialist),
+        baseline_assistants=baseline_assistants,
+        replications_per_baseline=int(args.baseline_replicates),
     )
-    baseline_table = pd.DataFrame([baseline_metrics]) if baseline_metrics else pd.DataFrame()
+    baseline_table = baseline_reps_df.copy()
+    if not baseline_table.empty:
+        baseline_table = baseline_table.rename(columns={"replicate_index": "baseline_run_id"})
+        baseline_table["baseline_variant"] = np.where(
+            pd.to_numeric(baseline_table["Assistant"], errors="coerce") == 1,
+            "assistant_1",
+            np.where(
+                pd.to_numeric(baseline_table["Assistant"], errors="coerce") == 2,
+                "assistant_2",
+                "assistant_other",
+            ),
+        )
+        baseline_table["ga_replications_n"] = 0
+        baseline_table["ga_ci95"] = 0.0
+
+        if baseline_metrics_rows:
+            baseline_metrics_df = pd.DataFrame(baseline_metrics_rows)
+            ga_cols = [
+                "sample_id",
+                "Doctor",
+                "Nurse",
+                "Assistant",
+                "Specialist",
+                "target_patients_24h",
+                "generated_patients_ga",
+                "served_24h_ga",
+                "served_24h_rate",
+                "served_share_generated_pct",
+                "served_share_target_pct",
+                "backlog_vs_generated",
+                "backlog_vs_target",
+                "completion_time_max_min",
+                "horizon_min",
+                "schedule_feasible_24h_target",
+                "missing_first_wait_rows",
+                "ga_wait_all_finished",
+                "ga_lambda_fixed_row",
+                "ga_feasible_fixed_row",
+                "baseline_source_subdir",
+            ]
+            ga_cols = [c for c in ga_cols if c in baseline_metrics_df.columns]
+            baseline_table = baseline_table.merge(
+                baseline_metrics_df[ga_cols],
+                on=RESOURCE_COLS,
+                how="left",
+            )
 
     sensitivity_cols = [
         "Doctor",
@@ -1327,12 +1543,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
     appendix_entries.append({"path": str(fA1), **metaA1})
 
     p_baseline_figure_dedicated = baseline_out_dir / "figB1_baseline_completion_profile.png"
-    if not baseline_patient_df.empty and baseline_metrics:
+    if baseline_profiles:
         fB1 = out_dir / "figB1_baseline_completion_profile.png"
-        mB1 = _plot_baseline_completion_profile(baseline_patient_df, baseline_metrics, fB1)
+        mB1 = _plot_baseline_completion_profile(baseline_profiles, fB1)
         baseline_entries.append({"path": str(fB1), **mB1})
         if p_baseline_figure_dedicated.resolve() != fB1.resolve():
-            _plot_baseline_completion_profile(baseline_patient_df, baseline_metrics, p_baseline_figure_dedicated)
+            _plot_baseline_completion_profile(baseline_profiles, p_baseline_figure_dedicated)
 
     # Sensitivity figures focused on attended-patient patterns by staffing combinations.
     fS1 = out_dir / "figS1_ga_served24h_by_staff_grid.png"
@@ -1449,7 +1665,10 @@ def run_pipeline(args: argparse.Namespace) -> None:
         "run_dir": str(run_dir),
         "ga_subdir": args.ga_subdir,
         "baseline_ga_subdir": args.baseline_ga_subdir,
-        "baseline_staff": baseline_staff,
+        "baseline_staff_common": baseline_staff_common,
+        "baseline_assistants": baseline_assistants,
+        "baseline_replicates_requested": int(args.baseline_replicates),
+        "baseline_replicate_columns_used": baseline_rep_cols_used,
         "baseline_outdir": str(baseline_out_dir),
         "flexsim_file": str(flexsim_file),
         "flexsim_sheet": fs_sheet,
@@ -1471,7 +1690,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"Run folder used: {run_dir}")
     print(f"GA source folder: {run_dir / args.ga_subdir}")
     print(f"Baseline GA source folder: {run_dir / args.baseline_ga_subdir}")
-    print("Baseline staffing tuple: " + ", ".join([f"{k}={v}" for k, v in baseline_staff.items()]))
+    print(
+        "Baseline common staffing: "
+        + ", ".join([f"{k}={v}" for k, v in baseline_staff_common.items()])
+        + f"; Assistant levels={baseline_assistants}; Replications per baseline={int(args.baseline_replicates)}"
+    )
     print(f"Baseline dedicated output folder: {baseline_out_dir}")
     print(f"FlexSim file used: {flexsim_file} (sheet: {fs_sheet})")
     print(f"Saved: {p_table1}")
@@ -1536,7 +1759,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--baseline-ga-subdir",
-        default="fixed",
+        default="combinatorics",
         help="GA subfolder used for baseline extraction (inside run_dir).",
     )
     parser.add_argument(
@@ -1555,7 +1778,20 @@ def parse_args() -> argparse.Namespace:
         "--baseline-assistant",
         type=int,
         default=DEFAULT_BASELINE_STAFF["Assistant"],
-        help="Baseline Assistant count used to select baseline scenario.",
+        help="Fallback single baseline Assistant count used only when --baseline-assistants is not provided.",
+    )
+    parser.add_argument(
+        "--baseline-assistants",
+        nargs="+",
+        type=int,
+        default=list(DEFAULT_BASELINE_ASSISTANTS),
+        help="Assistant levels to include in baseline outputs (default: 1 2).",
+    )
+    parser.add_argument(
+        "--baseline-replicates",
+        type=int,
+        default=DEFAULT_BASELINE_REPLICATES,
+        help="Number of FlexSim replications to export per baseline assistant level.",
     )
     parser.add_argument(
         "--baseline-specialist",

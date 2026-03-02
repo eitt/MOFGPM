@@ -1,44 +1,52 @@
 # Baseline Fixed Case Summary: Column Guide
 
-This file explains the columns in `baseline_fixed_case_summary.csv` and how to interpret them for the baseline scenario.
+This file explains `baseline_fixed_case_summary.csv`.
+By default it contains `20` baseline runs:
+- `10` runs for `Assistant=1`
+- `10` runs for `Assistant=2`
+
+## Structure
+
+Each row is one baseline run (`baseline_run_id`) for a given staffing tuple and replicate index.
+GA baseline diagnostics are merged into each row by staffing tuple.
 
 ## Column Dictionary
 
 | Column | Meaning | How to interpret |
 |---|---|---|
-| `sample_id` | GA sample identifier used for the selected baseline row. | Use it to trace the exact schedule and triage records that produced this baseline summary. |
-| `Doctor` | Number of doctors in the selected baseline staffing tuple. | Higher values usually increase service capacity at doctor-required tasks. |
-| `Nurse` | Number of nurses in the selected baseline staffing tuple. | Higher values usually reduce nurse-related queues and waiting. |
-| `Assistant` | Number of assistants in the selected baseline staffing tuple. | Higher values usually increase throughput in assistant-required steps. |
-| `Specialist` | Number of specialists in the selected baseline staffing tuple. | Higher values usually reduce specialist bottlenecks. |
-| `target_patients_24h` | Required patients to be completed within 24 hours (daily target). | This is the baseline demand target to compare against served counts. |
-| `generated_patients_ga` | Number of unique patients generated/observed in the GA baseline sample. | If this is below target, demand generation itself may limit achievable completions. |
-| `served_24h_ga` | Number of patients completed within the 24h horizon (`last_end <= horizon_min`). | Primary achieved throughput under baseline conditions. |
-| `served_24h_rate` | Hourly completion rate in 24h horizon. Formula: `served_24h_ga / 24`. | Compare across scenarios as “patients completed per hour”. |
-| `served_share_generated_pct` | Percent of generated patients completed within 24h. Formula: `100 * served_24h_ga / generated_patients_ga`. | Shows service efficiency relative to generated cohort. Higher is better. |
-| `served_share_target_pct` | Percent of daily target completed within 24h. Formula: `100 * served_24h_ga / target_patients_24h`. | Shows target attainment. `100%` means full target met. |
-| `backlog_vs_generated` | Generated patients not completed within 24h. Formula: `generated_patients_ga - served_24h_ga`. | Immediate carry-over workload from generated cohort. Lower is better. |
-| `backlog_vs_target` | Shortfall to daily target within 24h. Formula: `max(0, target_patients_24h - served_24h_ga)`. | Operational deficit vs planned daily capacity. `0` means target met. |
-| `completion_time_max_min` | Latest patient completion time (minutes) in this baseline sample. | If this exceeds `horizon_min`, some patients complete after 24h. |
-| `horizon_min` | Time horizon in minutes used to define 24h service window (normally `1440`). | Baseline 24h cutoff for served/unserved classification. |
-| `schedule_feasible_24h_target` | Baseline feasibility flag for daily target. `True` if target served within horizon. | `True` means no target shortfall and no beyond-horizon completion constraint for feasibility rule. |
-| `missing_first_wait_rows` | Count of patients with missing `first_wait` in triage data, filled as `0` in computation. | Data quality indicator. Non-zero can affect waiting-time precision. |
-| `ga_wait_all_finished` | Total GA waiting metric for all finished patients in selected baseline row. | Use as total burden indicator; compare only with same KPI definition. |
-| `ga_lambda_fixed_row` | Fuzzy objective score (`lambda`) for selected baseline row. | Higher generally indicates better balance against fuzzy goals. |
-| `ga_feasible_fixed_row` | GA feasibility flag from baseline row in `results.csv`. | Feasibility under GA model constraints, separate from 24h target feasibility flag. |
-| `baseline_source_subdir` | Run subfolder used to extract baseline data (for example `fixed`). | Provenance field for reproducibility and audit of baseline source. |
+| `Scenario` | FlexSim scenario label associated with the baseline run. | Traceability label for the source scenario row. |
+| `Doctor` | Number of doctors in the baseline tuple. | Common baseline setting unless overridden. |
+| `Nurse` | Number of nurses in the baseline tuple. | Common baseline setting unless overridden. |
+| `Assistant` | Number of assistants in the baseline tuple (`1` or `2` by default). | Baseline variant selector. |
+| `Specialist` | Number of specialists in the baseline tuple. | Common baseline setting unless overridden. |
+| `Patient` | FlexSim served-patient value in source row. | Throughput context for the baseline run. |
+| `baseline_run_id` | Baseline run index (`1..10` by default per assistant variant). | Run-level identifier within each baseline variant. |
+| `replicate_column` | Original replication column name used from FlexSim workbook. | Helps map the run back to source replication column. |
+| `FS_wait_total` | Baseline run total wait value from source replication. | Run-level wait KPI value. |
+| `baseline_variant` | Baseline label (`assistant_1`, `assistant_2`, or `assistant_other`). | Grouping label for comparisons. |
+| `ga_replications_n` | GA replication count used for baseline runs. | `0` by design for GA baseline in this table. |
+| `ga_ci95` | GA confidence-interval width for baseline runs. | `0.0` by design when no GA replications are used. |
+| `sample_id` | GA sample identifier for the matched staffing tuple. | Trace to GA schedules and triage rows. |
+| `target_patients_24h` | Target patients required within 24h. | Daily target benchmark. |
+| `generated_patients_ga` | GA generated patients in baseline sample. | Demand generation context. |
+| `served_24h_ga` | GA patients served within 24h horizon. | Main GA baseline throughput KPI. |
+| `served_24h_rate` | Hourly GA served rate (`served_24h_ga / 24`). | Compare pace across variants. |
+| `served_share_generated_pct` | Percent of generated GA patients served in 24h. | Service efficiency indicator. |
+| `served_share_target_pct` | Percent of target served in 24h. | Target attainment indicator. |
+| `backlog_vs_generated` | GA backlog against generated patients. | Carry-over load from generated cohort. |
+| `backlog_vs_target` | GA backlog against target. | Day-end target gap indicator. |
+| `completion_time_max_min` | Latest GA patient completion time (minutes). | > `horizon_min` means spill beyond 24h. |
+| `horizon_min` | Horizon used for 24h classification. | Usually `1440`. |
+| `schedule_feasible_24h_target` | GA feasibility flag for 24h target. | `True` means baseline meets target in horizon. |
+| `missing_first_wait_rows` | Count of GA rows with missing first wait filled as `0`. | Data-quality signal. |
+| `ga_wait_all_finished` | GA wait KPI for all finished patients. | Total burden indicator. |
+| `ga_lambda_fixed_row` | GA fuzzy objective score (`lambda`). | Higher generally indicates better goal balance. |
+| `ga_feasible_fixed_row` | GA feasibility flag from `results.csv`. | Model-feasibility context. |
+| `baseline_source_subdir` | Source GA subfolder used for baseline extraction. | Provenance field for reproducibility. |
 
 ## Quick Interpretation Workflow
 
-1. Check `schedule_feasible_24h_target`.
-2. If `False`, inspect `served_share_target_pct`, `backlog_vs_target`, and `completion_time_max_min` vs `horizon_min`.
-3. Use `served_24h_rate` to compare operational pace with other baselines.
-4. Use `ga_lambda_fixed_row` and `ga_feasible_fixed_row` for optimization-quality context.
-5. Check `missing_first_wait_rows` before drawing strong conclusions from waiting metrics.
-
-## Practical Reading Rules
-
-- `served_share_target_pct < 100` means daily target was not fully achieved in 24h.
-- `completion_time_max_min > horizon_min` means at least one patient finished after the 24h window.
-- `backlog_vs_generated > 0` means carry-over exists even for generated demand.
-- `backlog_vs_target > 0` means target capacity gap remains at day-end.
+1. Filter rows by `Assistant` and compare run-level spread for `1` vs `2`.
+2. Use `FS_wait_total` for run-level baseline dispersion.
+3. Use GA columns (`served_24h_ga`, `schedule_feasible_24h_target`, `ga_lambda_fixed_row`) for baseline feasibility context.
+4. Use `ga_replications_n=0` and `ga_ci95=0.0` to indicate no GA replication CI in this baseline table.
